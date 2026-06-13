@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bindery-box.local/contracts/agent-messenger-contract.json",
+  "version": "0.1.0",
+  "title": "BINDERY BOX Agent Runtime and Messenger Contract",
+  "type": "object",
+  "required": [
+    "version",
+    "commands",
+    "events",
+    "adapters"
+  ],
+  "properties": {
+    "version": {
+      "const": "0.1.0"
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "requiredFields",
+          "surface"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "surface": {
+            "enum": [
+              "mission-control",
+              "messenger",
+              "runtime",
+              "system"
+            ]
+          },
+          "requiredFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "source",
+          "projection"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "messenger",
+              "control-plane",
+              "runtime",
+              "policy",
+              "office"
+            ]
+          },
+          "projection": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "workstream",
+                "live-log",
+                "messenger-thread",
+                "3d-office",
+                "audit"
+              ]
+            }
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "adapters": {
+      "type": "object",
+      "required": [
+        "messengerOfficeAdapter",
+        "agentRuntimeAdapter"
+      ],
+      "properties": {
+        "messengerOfficeAdapter": {
+          "type": "object",
+          "required": [
+            "inbound",
+            "outbound"
+          ],
+          "properties": {
+            "inbound": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "outbound": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "agentRuntimeAdapter": {
+          "type": "object",
+          "required": [
+            "methods"
+          ],
+          "properties": {
+            "methods": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "commands": [
+    {
+      "type": "user.message.ingest",
+      "surface": "messenger",
+      "requiredFields": [
+        "workspaceId",
+        "provider",
+        "channelRef",
+        "senderRef",
+        "text",
+        "providerEventId"
+      ],
+      "description": "Normalize an inbound human messenger message before intent routing."
+    },
+    {
+      "type": "task.create",
+      "surface": "mission-control",
+      "requiredFields": [
+        "workspaceId",
+        "title",
+        "requestedBy"
+      ],
+      "description": "Create a task from Goal Composer, messenger, scheduler, or connector trigger."
+    },
+    {
+      "type": "agent.run.enqueue",
+      "surface": "runtime",
+      "requiredFields": [
+        "workspaceId",
+        "taskId",
+        "agentId",
+        "requestedBy",
+        "goal"
+      ],
+      "description": "Queue a task for a real agent runtime worker."
+    },
+    {
+      "type": "office.message.post",
+      "surface": "system",
+      "requiredFields": [
+        "workspaceId",
+        "channelRef",
+        "text",
+        "correlationId"
+      ],
+      "description": "Post a product-safe message into the human office/messenger."
+    }
+  ],
+  "events": [
+    {
+      "type": "user.message.received",
+      "source": "messenger",
+      "projection": [
+        "live-log",
+        "audit"
+      ],
+      "description": "A verified inbound human message was accepted."
+    },
+    {
+      "type": "agent.run.queued",
+      "source": "control-plane",
+      "projection": [
+        "workstream",
+        "3d-office",
+        "live-log"
+      ],
+      "description": "An agent job entered the runtime queue."
+    },
+    {
+      "type": "agent.run.started",
+      "source": "runtime",
+      "projection": [
+        "workstream",
+        "3d-office",
+        "messenger-thread",
+        "live-log"
+      ],
+      "description": "The runtime began executing an agent job."
+    },
+    {
+      "type": "agent.stream.delta",
+      "source": "runtime",
+      "projection": [
+        "live-log"
+      ],
+      "description": "A throttled streaming progress chunk."
+    },
+    {
+      "type": "agent.run.completed",
+      "source": "runtime",
+      "projection": [
+        "workstream",
+        "3d-office",
+        "messenger-thread",
+        "live-log",
+        "audit"
+      ],
+      "description": "The runtime completed an agent job."
+    },
+    {
+      "type": "approval.requested",
+      "source": "policy",
+      "projection": [
+        "workstream",
+        "3d-office",
+        "messenger-thread",
+        "live-log",
+        "audit"
+      ],
+      "description": "Human approval is required before continuing."
+    },
+    {
+      "type": "office.message.posted",
+      "source": "office",
+      "projection": [
+        "live-log",
+        "audit"
+      ],
+      "description": "A messenger post was produced from an event."
+    }
+  ],
+  "adapters": {
+    "messengerOfficeAdapter": {
+      "inbound": [
+        "verifyWebhook",
+        "normalizeMessage",
+        "resolveIdentity",
+        "emitCommand"
+      ],
+      "outbound": [
+        "projectEvent",
+        "formatThreadPost",
+        "postMessage",
+        "recordOfficeEvent"
+      ]
+    },
+    "agentRuntimeAdapter": {
+      "methods": [
+        "enqueue",
+        "cancel",
+        "subscribe",
+        "health"
+      ]
+    }
+  }
+}

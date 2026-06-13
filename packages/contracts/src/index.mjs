@@ -5,13 +5,23 @@ import { nowIso, makeId } from "../../domain/src/index.mjs";
 
 export const CommandType = Object.freeze({
   taskRun: "task.run",
-  approvalDecide: "approval.decide"
+  taskCreate: "task.create",
+  approvalDecide: "approval.decide",
+  userMessageIngest: "user.message.ingest",
+  agentRunEnqueue: "agent.run.enqueue",
+  officeMessagePost: "office.message.post"
 });
 
 export const EventType = Object.freeze({
+  userMessageReceived: "user.message.received",
   taskRunStarted: "task.run.started",
   taskRunCompleted: "task.run.completed",
   taskRunFailed: "task.run.failed",
+  agentRunQueued: "agent.run.queued",
+  agentRunStarted: "agent.run.started",
+  agentStreamDelta: "agent.stream.delta",
+  agentRunCompleted: "agent.run.completed",
+  agentRunFailed: "agent.run.failed",
   toolCallRequested: "tool.call.requested",
   toolCallBlocked: "tool.call.blocked",
   toolCallPendingApproval: "tool.call.pending-approval",
@@ -25,7 +35,11 @@ export const EventType = Object.freeze({
 // Minimal field-presence schemas keyed by command type.
 const COMMAND_SCHEMAS = {
   [CommandType.taskRun]: ["taskId", "requestedBy"],
-  [CommandType.approvalDecide]: ["approvalId", "decision", "decidedBy"]
+  [CommandType.taskCreate]: ["workspaceId", "title", "requestedBy"],
+  [CommandType.approvalDecide]: ["approvalId", "decision", "decidedBy"],
+  [CommandType.userMessageIngest]: ["workspaceId", "provider", "channelRef", "senderRef", "text", "providerEventId"],
+  [CommandType.agentRunEnqueue]: ["workspaceId", "taskId", "agentId", "requestedBy", "goal"],
+  [CommandType.officeMessagePost]: ["workspaceId", "channelRef", "text", "correlationId"]
 };
 
 export function makeCommand(type, payload = {}) {
