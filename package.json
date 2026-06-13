@@ -5,7 +5,9 @@
   "type": "module",
   "description": "BINDERY BOX / MUFI Box — AI Company-in-a-Box product runtime, Mission Control, and desktop launcher.",
   "scripts": {
-    "check": "node scripts/validate.mjs",
+    "check": "node scripts/validate.mjs && node scripts/validate-cloud.mjs",
+    "check:cloud": "node scripts/validate-cloud.mjs",
+    "build:web": "node scripts/build-web.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:api": "node apps/api/server.mjs",
     "dev:web": "node apps/web/server.mjs",

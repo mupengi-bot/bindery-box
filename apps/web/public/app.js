@@ -1,4 +1,16 @@
-const api = window.BINDERY_API_URL || "http://localhost:4311";
+// API base resolution order:
+//   1. window.__BINDERY_API_BASE__  (env-injected config.js — cloud deploys)
+//   2. window.BINDERY_API_URL       (legacy override)
+//   3. same-origin "" when served from a real host (Vercel)
+//   4. http://localhost:4311        (local default)
+function resolveApiBase() {
+  if (typeof window.__BINDERY_API_BASE__ === "string") return window.__BINDERY_API_BASE__;
+  if (typeof window.BINDERY_API_URL === "string") return window.BINDERY_API_URL;
+  const host = window.location && window.location.hostname;
+  if (host && host !== "localhost" && host !== "127.0.0.1") return "";
+  return "http://localhost:4311";
+}
+const api = resolveApiBase();
 const workspace = window.BINDERY_WORKSPACE || "default";
 const $ = (id) => document.getElementById(id);
 async function request(path, options = {}) { const res = await fetch(`${api}${path}`, options); if (!res.ok) throw new Error(await res.text()); return res.json(); }
