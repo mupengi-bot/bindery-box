@@ -43,8 +43,15 @@ const view = {
   hits: new Set(),   // knowledge search hit ids
   search: "",
   liveFilter: "all",
-  autoLive: true
+  autoLive: true,
+  // Agent Performance Market (front stage).
+  perfCategory: "all",   // lane filter pill
+  perfStatus: "all",     // agent status filter pill
+  watchOnly: false,      // "관심만" toggle
+  watched: new Set(),    // client-side 관심 set (seeded once from server flags)
+  watchedInit: false
 };
+function isWatched(id) { return view.watched.has(id); }
 let liveTimer = null;
 let searchTimer = null;
 
@@ -74,6 +81,12 @@ function fmtTime(iso) {
 }
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 function trendArrow(t) { return t === "up" ? "▲" : t === "down" ? "▼" : "·"; }
+// "+3 (+5.2%)" style delta string for performance / index cards.
+function deltaStr(d, pct) {
+  const dd = typeof d === "number" ? `${d > 0 ? "+" : ""}${d}` : esc(d);
+  const pp = (typeof pct === "number") ? ` (${pct > 0 ? "+" : ""}${pct}%)` : "";
+  return `${dd}${pp}`;
+}
 
 const LANE_STATUS_COLOR = {
   running: "#6ba6df", success: "#74c489", error: "#e0775c", idle: "rgba(236,224,204,.4)", info: "#8e8470"
@@ -420,8 +433,191 @@ function renderLive(live) {
     </div>`).join("") : `<div class="log-empty">표시할 로그가 없습니다.</div>`;
 }
 
-// Render the whole simulator surface from a workstream-shaped object.
+// ── Agent Performance Market (front stage) ───────────────────────────────
+function renderMarketStatus(ws) {
+  const st = ws.market?.status || { code: "idle", label: "운영 대기" };
+  const chip = $("market-status");
+  if (chip) {
+    chip.dataset.code = st.code || "idle";
+    const lbl = chip.querySelector(".ms-label");
+    if (lbl) lbl.textContent = st.label || "운영 대기";
+  }
+  if ($("market-asof")) $("market-asof").textContent = `기준 ${fmtTime(ws.market?.asOf || ws.generatedAt)}`;
+}
+
+// 지수 카드 (summary index cards with mini sparkline).
+function renderIndices(ws) {
+  const idx = ws.market?.indices || [];
+  $("indices").innerHTML = idx.length ? idx.map((k) => {
+    const trend = k.trend || "flat";
+    return `
+    <div class="idx" data-tr="${esc(trend)}">
+      <div class="idx-l">${esc(k.label)}</div>
+      <div class="idx-v">${k.value ?? 0}${k.unit ? `<small>${esc(k.unit)}</small>` : ""}</div>
+      <div class="idx-d ${trend}">${trendArrow(trend)} ${deltaStr(k.delta, k.deltaPercent)}</div>
+      <div class="idx-spark">${sparkSvg(k.spark, 96, 22)}</div>
+    </div>`;
+  }).join("") : `<div class="list-empty">지수 데이터를 불러오는 중…</div>`;
+}
+
+// 필터 pill (category by lane · status · 관심만).
+function renderFilters(ws) {
+  const cats = ws.market?.categories || [];
+  const cat = (id, label, count) => `
+    <button class="pill ${view.perfCategory === id ? "active" : ""}" data-cat="${esc(id)}">
+      ${esc(label)}${typeof count === "number" ? `<i>${count}</i>` : ""}
+    </button>`;
+  const STATUS = [["all", "전체"], ["running", "실행"], ["idle", "대기"], ["blocked", "차단"]];
+  const statusPills = STATUS.map(([k, l]) =>
+    `<button class="pill st ${view.perfStatus === k ? "active" : ""}" data-st="${k}">${l}</button>`).join("");
+  const el = $("perf-filters");
+  if (!el) return;
+  el.innerHTML = `
+    <div class="pill-row">
+      ${cat("all", "전체 라인")}
+      ${cats.map((c) => cat(c.id, c.label, c.count)).join("")}
+    </div>
+    <div class="pill-row">
+      ${statusPills}
+      <button class="pill watch ${view.watchOnly ? "active" : ""}" data-watchonly="1">★ 관심만</button>
+    </div>`;
+  el.querySelectorAll("[data-cat]").forEach((b) =>
+    b.addEventListener("click", () => { view.perfCategory = b.dataset.cat; renderFilters(view.ws); renderPerfBoard(view.ws); }));
+  el.querySelectorAll("[data-st]").forEach((b) =>
+    b.addEventListener("click", () => { view.perfStatus = b.dataset.st; renderFilters(view.ws); renderPerfBoard(view.ws); }));
+  const wo = el.querySelector("[data-watchonly]");
+  if (wo) wo.addEventListener("click", () => { view.watchOnly = !view.watchOnly; renderFilters(view.ws); renderPerfBoard(view.ws); });
+}
+
+// One ranking row (securities-style: rank · agent · score+spark · delta ·
+// 자동화/사람 split · 처리량 · AI 요약 · 관심/실행).
+function perfRow(p) {
+  const w = isWatched(p.id);
+  const run = p.runnableMissionId
+    ? `<button class="pb-run" data-run="${esc(p.runnableMissionId)}" title="대표 미션 실행">▶</button>`
+    : `<span class="pb-run ghost" aria-hidden="true">–</span>`;
+  return `
+  <div class="pb-row" data-st="${esc(p.status)}">
+    <span class="pb-rank">${p.rank}</span>
+    <div class="pb-agent">
+      <span class="pb-av" style="background:${hueColor(p.id || p.name)}">${esc(initials(p.name))}</span>
+      <span class="pb-id">
+        <b>${esc(p.name)}</b>
+        <small><i class="st-dot st-${esc(p.status)}"></i>${esc(p.statusLabel || p.status)} · ${esc(p.laneLabel || "")}</small>
+      </span>
+    </div>
+    <div class="pb-score"><b>${p.score ?? 0}</b><span class="pb-spark">${sparkSvg(p.spark, 72, 20)}</span></div>
+    <div class="pb-delta ${esc(p.trend || "flat")}">${trendArrow(p.trend)} ${deltaStr(p.delta, p.deltaPercent)}</div>
+    <div class="pb-split" title="자동화 ${p.automationRatio}% · 사람 ${p.humanRatio}%">
+      <div class="split-bar"><i class="auto" style="width:${clamp(p.automationRatio ?? 0, 0, 100)}%"></i><i class="human" style="width:${clamp(p.humanRatio ?? 0, 0, 100)}%"></i></div>
+      <small>자동 ${p.automationRatio ?? 0}% · 사람 ${p.humanRatio ?? 0}%</small>
+    </div>
+    <div class="pb-vol"><div class="meter"><i style="width:${clamp(p.volume ?? 0, 0, 100)}%"></i></div><small>${p.workload ?? 0}</small></div>
+    <div class="pb-sum">${esc(p.summary || "")}</div>
+    <div class="pb-act">
+      <button class="pb-star ${w ? "on" : ""}" data-watch="${esc(p.id)}" title="관심 토글" aria-pressed="${w}">${w ? "★" : "☆"}</button>
+      ${run}
+    </div>
+  </div>`;
+}
+
+function renderPerfBoard(ws) {
+  let rows = (ws.agentPerformance || []).slice();
+  if (view.perfCategory !== "all") rows = rows.filter((p) => p.lane === view.perfCategory);
+  if (view.perfStatus !== "all") rows = rows.filter((p) => p.status === view.perfStatus);
+  if (view.watchOnly) rows = rows.filter((p) => isWatched(p.id));
+  rows = rows.filter((p) => matchesSearch(`${p.name} ${p.role} ${p.laneLabel} ${p.summary} ${p.status}`));
+  if ($("perf-sub")) $("perf-sub").textContent = `${rows.length} agents`;
+  const head = `
+    <div class="pb-headrow" aria-hidden="true">
+      <span class="pb-rank">#</span>
+      <span class="pb-agent">에이전트</span>
+      <span class="pb-score">성과 점수</span>
+      <span class="pb-delta">변화</span>
+      <span class="pb-split">자동화 · 사람</span>
+      <span class="pb-vol">처리량</span>
+      <span class="pb-sum">AI 요약</span>
+      <span class="pb-act"></span>
+    </div>`;
+  $("perf-board").innerHTML = rows.length
+    ? head + rows.map(perfRow).join("")
+    : `<div class="list-empty">조건에 맞는 에이전트가 없습니다.</div>`;
+  wireBoard();
+}
+
+function wireBoard() {
+  document.querySelectorAll("#perf-board [data-watch]").forEach((b) =>
+    b.addEventListener("click", () => toggleWatch(b.dataset.watch)));
+  document.querySelectorAll("#perf-board [data-run]").forEach((b) => {
+    if (b.disabled) return;
+    b.addEventListener("click", () => runTask(b.dataset.run));
+  });
+}
+
+function toggleWatch(id) {
+  if (!id) return;
+  if (view.watched.has(id)) view.watched.delete(id); else view.watched.add(id);
+  renderPerfBoard(view.ws);
+  renderWatchlist(view.ws);
+}
+
+// 관심 에이전트 TOP 10 (right rail watchlist).
+function renderWatchlist(ws) {
+  const list = (ws.agentPerformance || []).filter((p) => isWatched(p.id)).slice(0, 10);
+  if ($("watch-sub")) $("watch-sub").textContent = String(list.length);
+  $("watchlist").innerHTML = list.length ? list.map((p, i) => `
+    <div class="wl-row">
+      <span class="wl-rank">${i + 1}</span>
+      <span class="wl-av" style="background:${hueColor(p.id || p.name)}">${esc(initials(p.name))}</span>
+      <div class="wl-mid">
+        <div class="wl-name">${esc(p.name)}</div>
+        <div class="wl-meta">${esc(p.laneLabel || "")} · 점수 ${p.score ?? 0}</div>
+      </div>
+      <div class="wl-delta ${esc(p.trend || "flat")}">${trendArrow(p.trend)} ${deltaStr(p.delta, p.deltaPercent)}</div>
+      <button class="wl-star on" data-watch="${esc(p.id)}" title="관심 해제">★</button>
+    </div>`).join("") : `<div class="list-empty">★ 로 관심 에이전트를 추가하세요.</div>`;
+  document.querySelectorAll("#watchlist [data-watch]").forEach((b) =>
+    b.addEventListener("click", () => toggleWatch(b.dataset.watch)));
+}
+
+// ── Onboarding overlay (오늘 뭐부터 할까요? → objective cards → start) ──────
+function renderOnboard(ws) {
+  const lanes = (ws.lanes || []).filter((l) => (l.total ?? 0) > 0);
+  const el = $("onboard-cards");
+  if (!el) return;
+  el.innerHTML = lanes.length ? lanes.map((l) => `
+    <button class="ob-card" data-cat="${esc(l.id)}">
+      <span class="ob-glyph">${esc(l.glyph || "◈")}</span>
+      <span class="ob-title">${esc(l.label)}</span>
+      <span class="ob-sub">${esc(l.agentName || "—")} · ${l.done ?? 0}/${l.total ?? 0}</span>
+      <span class="ob-go">이 목표로 시작 →</span>
+    </button>`).join("") : `<div class="list-empty">먼저 ⟲ 데모 채우기로 회사를 구성하세요.</div>`;
+  el.querySelectorAll("[data-cat]").forEach((b) =>
+    b.addEventListener("click", () => {
+      view.perfCategory = b.dataset.cat;
+      renderFilters(view.ws); renderPerfBoard(view.ws);
+      setPanel("stream");
+      closeOnboard(true);
+    }));
+}
+function openOnboard() { document.body.classList.add("onboard-open"); if (view.ws) renderOnboard(view.ws); }
+function closeOnboard(persist) {
+  document.body.classList.remove("onboard-open");
+  if (persist) { try { localStorage.setItem("bb_onboarded", "1"); } catch { /* ignore */ } }
+}
+
+// Render the whole market + simulator surface from a workstream-shaped object.
 function renderWorkstream(ws) {
+  // Seed the client 관심 set from server watch flags exactly once.
+  if (!view.watchedInit && (ws.agentPerformance || []).length) {
+    view.watched = new Set((ws.agentPerformance || []).filter((p) => p.watch).map((p) => p.id));
+    view.watchedInit = true;
+  }
+  renderMarketStatus(ws);
+  renderIndices(ws);
+  renderFilters(ws);
+  renderPerfBoard(ws);
+  renderWatchlist(ws);
   renderVitals(ws);
   renderTopo(ws);
   renderLaneMap(ws);
@@ -434,6 +630,7 @@ function renderWorkstream(ws) {
   renderAlerts(ws);
   renderMissions(ws);
   renderAchievements(ws);
+  if (document.body.classList.contains("onboard-open")) renderOnboard(ws);
 }
 
 // ── action wiring (re-attached after each render) ───────────────────────
@@ -487,6 +684,24 @@ function synthFromOverview(ov) {
       id: a.id, name: a.name, role: a.role || "", laneLabel: "", status: a.status || "idle",
       energy: 60, focus: "", activeMission: null, capabilities: a.capabilities || []
     })),
+    agentPerformance: agents.map((a, i) => ({
+      id: a.id, name: a.name, role: a.role || "", lane: "", laneLabel: a.role || "",
+      status: a.status || "idle", statusLabel: a.status || "idle",
+      rank: i + 1, score: 60, delta: 0, deltaPercent: 0, trend: "flat",
+      automationRatio: 60, humanRatio: 40, workload: 40, volume: 40,
+      summary: "개요 데이터 기반 표시", watch: i < 3, runnableMissionId: null, spark: []
+    })),
+    market: {
+      status: { code: "idle", label: "운영 대기" }, asOf: ov.generatedAt || null,
+      indices: [
+        { id: "active", label: "활성 에이전트", value: m.activeAgents ?? 0, unit: "", delta: 0, deltaPercent: 0, trend: "flat", spark: [] },
+        { id: "queued", label: "대기 미션", value: m.queuedTasks ?? 0, unit: "건", delta: 0, deltaPercent: 0, trend: "flat", spark: [] },
+        { id: "done", label: "완료 미션", value: completed, unit: "건", delta: completed, deltaPercent: 0, trend: completed ? "up" : "flat", spark: [] },
+        { id: "approval", label: "승인 대기", value: pending, unit: "건", delta: -pending, deltaPercent: 0, trend: pending ? "down" : "flat", spark: [] }
+      ],
+      categories: []
+    },
+    watchlist: [],
     lanes: [],
     pipeline: { stages: [
       { id: "queued", label: "Queued", count: m.queuedTasks ?? 0 },
@@ -597,6 +812,7 @@ async function runKnowledgeSearch() {
 function applySearch() {
   // Re-render local views with the current filter (no refetch needed).
   if (view.ws) {
+    renderPerfBoard(view.ws);
     renderRoster(view.ws);
     renderMissions(view.ws);
     renderStream(view.ws);
@@ -648,6 +864,17 @@ on("debug-close", "click", () => document.body.classList.remove("debug-open"));
 on("insp-toggle", "click", () => document.body.classList.toggle("insp-open"));
 on("insp-close", "click", () => document.body.classList.remove("insp-open"));
 
+// Onboarding overlay (progressive disclosure).
+on("guide", "click", () => openOnboard());
+on("onboard-skip", "click", () => closeOnboard(true));
+on("onboard-start", "click", () => closeOnboard(true));
+on("onboard-seed", "click", async () => {
+  try { await request(`/api/demo/seed`, { method: "POST" }); }
+  catch { setConn(false, "seed failed"); }
+  await loadAll();
+  if (view.ws) renderOnboard(view.ws);
+});
+
 const liveFilters = $("live-filters");
 if (liveFilters) liveFilters.querySelectorAll(".lf").forEach((b) =>
   b.addEventListener("click", () => {
@@ -680,5 +907,10 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // boot
-loadAll();
+loadAll().then(() => {
+  // First-time visitors get the progressive-disclosure guide.
+  let seen = false;
+  try { seen = !!localStorage.getItem("bb_onboarded"); } catch { seen = false; }
+  if (!seen) openOnboard();
+});
 startLiveTimer();

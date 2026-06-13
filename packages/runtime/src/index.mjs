@@ -633,6 +633,105 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
     ? { title: stream[0].title, detail: stream[0].detail, level: stream[0].level, ts: stream[0].ts }
     : { title: "운영 대기 중", detail: "Seed로 회사를 구성하거나 미션을 실행하세요.", level: "info", ts: null };
 
+  // --- agent performance market (증권 랭킹 패턴, 업무 성과 용어) --------------
+  // Pure derivation. Each agent earns a 업무 성과 점수(score), 변화량(delta) /
+  // 변화율(deltaPercent), 처리량(workload/volume), 자동화 비율(automationRatio)
+  // vs 사람 개입(humanRatio) split, an AI 요약 line and a 관심(watch) flag.
+  // Ranked by score so the UI can render a securities-style 랭킹 보드. No
+  // financial/investment vocabulary is used — only 업무 성과/에이전트 실적/자동화.
+  const STATUS_LABEL_KO = Object.freeze({
+    running: "실행 중", idle: "대기", blocked: "정책 차단", disabled: "비활성"
+  });
+  const pct1 = (num, den) => Math.round((num / Math.max(1, den)) * 1000) / 10;
+  const perfRaw = agentCards.map((a) => {
+    const owned = missions.filter((mm) => mm.agentId === a.id);
+    const done = owned.filter((mm) => mm.status === "completed").length;
+    const active = owned.filter((mm) => mm.status === "running" || mm.status === "waiting_approval").length;
+    const failedOwned = owned.filter((mm) => mm.status === "failed").length;
+    const autoMissions = owned.filter((mm) => !mm.requiresApproval).length;
+    const wob = seedHash(`perf:${a.id}`);
+
+    const score = clamp(Math.round(
+      58 + done * 12 + active * 6 - failedOwned * 16 + (a.energy - 60) * 0.18 + (wob - 0.5) * 9
+    ), 0, 120);
+    const delta = Math.round(done * 6 + active * 2 - failedOwned * 11 + (seedHash(`perfd:${a.id}`) - 0.46) * 7);
+    const deltaPercent = pct1(delta, Math.max(1, score - delta));
+    const automationRatio = clamp(Math.round(
+      owned.length ? (autoMissions / owned.length) * 100 : 60 + (wob - 0.5) * 30
+    ), 0, 100);
+    const workload = clamp(
+      owned.length * 16 + (a.capabilities?.length ?? 0) * 6 + active * 14 + Math.round(wob * 12),
+      4, 100
+    );
+    const summary = a.status === "blocked"
+      ? "정책 차단 상태 · 권한 부여 검토 필요"
+      : active
+        ? `${a.laneLabel} 미션 실행 중 · 처리량 ${workload} 유지`
+        : done
+          ? `${a.laneLabel} 미션 ${done}건 완료 · 자동화 ${automationRatio}%`
+          : `대기 중 · 다음 ${a.laneLabel} 미션 준비`;
+    const runnable = owned.find((mm) => mm.runnable);
+    return {
+      id: a.id, name: a.name, role: a.role, lane: a.lane, laneLabel: a.laneLabel,
+      status: a.status, statusLabel: STATUS_LABEL_KO[a.status] ?? a.status,
+      score, delta, deltaPercent, trend: delta > 0 ? "up" : delta < 0 ? "down" : "flat",
+      automationRatio, humanRatio: 100 - automationRatio,
+      workload, volume: workload,
+      missionsTotal: owned.length, missionsDone: done, missionsActive: active,
+      summary,
+      watch: seedHash(`watch:${a.id}`) > 0.4,
+      runnableMissionId: runnable?.taskId ?? runnable?.id ?? null,
+      spark: sparkSeries(`perf_${a.id}`, Math.max(8, score))
+    };
+  });
+  const agentPerformance = perfRaw
+    .slice()
+    .sort((p1, p2) => p2.score - p1.score || (p1.name < p2.name ? -1 : 1))
+    .map((p, i) => ({ ...p, rank: i + 1 }));
+
+  // 지수 카드 (summary index cards) — composite 성과/자동화/처리량/승인 지표.
+  const avg = (arr) => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0);
+  const perfIndex = Math.round(avg(agentPerformance.map((p) => p.score)));
+  const autoIndex = Math.round(avg(agentPerformance.map((p) => p.automationRatio)));
+  const perfDeltaAvg = Math.round(avg(agentPerformance.map((p) => p.delta)) * 10) / 10;
+  const throughput = completed + runningTasks;
+  const marketIndices = [
+    { id: "perf", label: "성과 종합 지수", value: perfIndex, unit: "",
+      delta: perfDeltaAvg, deltaPercent: pct1(perfDeltaAvg, Math.max(1, perfIndex - perfDeltaAvg)),
+      trend: perfDeltaAvg > 0 ? "up" : perfDeltaAvg < 0 ? "down" : "flat",
+      spark: sparkSeries("idx_perf", Math.max(8, perfIndex)) },
+    { id: "auto", label: "자동화 지수", value: autoIndex, unit: "%",
+      delta: completed * 4, deltaPercent: pct1(completed * 4, Math.max(1, autoIndex)),
+      trend: completed ? "up" : "flat",
+      spark: sparkSeries("idx_auto", Math.max(8, autoIndex)) },
+    { id: "throughput", label: "처리량 지수", value: throughput, unit: "건",
+      delta: completed, deltaPercent: 0, trend: throughput ? "up" : "flat",
+      spark: sparkSeries("idx_thru", Math.max(6, throughput * 3)) },
+    { id: "approval", label: "승인 대기", value: pendingApprovals, unit: "건",
+      delta: -pendingApprovals, deltaPercent: 0,
+      trend: pendingApprovals ? "down" : "flat",
+      spark: sparkSeries("idx_appr", Math.max(4, pendingApprovals * 4 + 4)) }
+  ];
+
+  // 시장 상태 chip → 운영 상태 + 실시간 기준 시각.
+  const marketStatus = failed
+    ? { code: "alert", label: "인시던트 점검" }
+    : pendingApprovals
+      ? { code: "review", label: "승인 점검 중" }
+      : runningTasks
+        ? { code: "active", label: "운영 가동 중" }
+        : completed >= tasks.length && tasks.length
+          ? { code: "settled", label: "운영 정산 완료" }
+          : { code: "idle", label: "운영 대기" };
+
+  // 카테고리 필터 pill (lanes 중 미션이 있는 것).
+  const categories = WORKSTREAM_LANES
+    .map((lane) => ({ id: lane.id, label: lane.label, count: missions.filter((mm) => mm.lane === lane.id).length }))
+    .filter((c) => c.count > 0);
+
+  // 관심 에이전트 TOP 10 (watchlist) — flagged + score-ranked.
+  const watchlist = agentPerformance.filter((p) => p.watch).slice(0, 10);
+
   return {
     workspaceId: wsId,
     generatedAt: nowIso(),
@@ -655,7 +754,13 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
       ]
     },
     objectives, alerts, achievements, stream,
-    counts: { missions: missions.length, agents: agentCards.length, alerts: alerts.length, stream: stream.length }
+    agentPerformance,
+    market: { status: marketStatus, asOf: nowIso(), indices: marketIndices, categories },
+    watchlist,
+    counts: {
+      missions: missions.length, agents: agentCards.length, alerts: alerts.length,
+      stream: stream.length, performers: agentPerformance.length, watchlist: watchlist.length
+    }
   };
 }
 

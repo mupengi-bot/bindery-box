@@ -3,46 +3,51 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>BINDERY BOX · Company Simulator</title>
+  <title>BINDERY BOX · Agent Performance Market</title>
   <meta name="color-scheme" content="dark" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-panel="stream">
   <div class="sim" id="sim">
 
-    <!-- ── Command bar ───────────────────────────────────────────────── -->
+    <!-- ── Command bar (search-centric top nav) ──────────────────────────── -->
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">◧</span>
         <div class="brand-text">
           <strong>BINDERY BOX</strong>
-          <small id="brand-sub">Company Simulator</small>
+          <small id="brand-sub">Agent Performance Market</small>
         </div>
         <span class="tier-chip" id="tier-chip" title="회사 운영 단계">Seed</span>
       </div>
 
       <div class="topbar-search">
         <span class="search-icon" aria-hidden="true">⌕</span>
-        <input id="search" type="search" placeholder="에이전트·미션·이벤트 검색  ( / )"
+        <input id="search" type="search" placeholder="에이전트·미션·실적 검색  ( / )"
                autocomplete="off" spellcheck="false" aria-label="검색" />
         <kbd>/</kbd>
       </div>
 
       <div class="topbar-actions">
+        <div class="market-chip" id="market-status" data-code="idle" title="운영 시장 상태">
+          <span class="ms-dot"></span><span class="ms-label">운영 대기</span>
+        </div>
+        <span class="market-asof" id="market-asof" title="실시간 기준 시각">기준 --:--:--</span>
         <div class="conn" id="conn" title="API 연결 상태">
           <span class="conn-dot"></span><span id="conn-label">connecting…</span>
         </div>
-        <button class="ghost-btn drawer-only" id="insp-toggle" title="미션 인스펙터">◑ Inspector</button>
+        <button class="ghost-btn" id="guide" title="시작 가이드 다시 보기">◎ Guide</button>
+        <button class="ghost-btn drawer-only" id="insp-toggle" title="관심·미션 패널">◑ Watch</button>
         <button class="ghost-btn" id="debug-toggle" title="기술 로그 드로어 (raw)">⌗ Debug</button>
         <button class="ghost-btn" id="seed" title="회사 데모 상태 재시드">⟲ Seed</button>
         <button class="ghost-btn primary" id="refresh" title="전체 새로고침">↻ Refresh</button>
       </div>
     </header>
 
-    <!-- ── Cockpit ───────────────────────────────────────────────────── -->
+    <!-- ── Cockpit ───────────────────────────────────────────────────────── -->
     <div class="cockpit">
 
-      <!-- LEFT · Company map -->
+      <!-- LEFT · Company map (backstage observable) -->
       <aside class="col col-map" id="col-map" aria-label="Company map">
         <section class="panel vitals" id="vitals"></section>
         <section class="panel">
@@ -59,34 +64,62 @@
         </section>
       </aside>
 
-      <!-- CENTER · Operations stream -->
-      <main class="col col-stream" id="col-stream" aria-label="Operations stream">
+      <!-- CENTER · Agent Performance Market (front stage) -->
+      <main class="col col-stream" id="col-stream" aria-label="Agent performance market">
+
+        <!-- 지수 카드 (summary index cards) -->
+        <section class="indices" id="indices" aria-label="성과 지수"></section>
+
+        <!-- 헤드라인 -->
         <section class="hero" id="hero"></section>
 
-        <section class="pipeline" id="pipeline"></section>
-
-        <section class="kpi-grid" id="kpis"></section>
-
-        <section class="panel objectives-panel">
-          <header class="panel-head">
-            <h3>Daily Objectives</h3>
-            <span class="panel-sub" id="obj-sub">0 / 0</span>
+        <!-- Agent Performance Board (증권 랭킹 패턴) -->
+        <section class="panel board-panel grow">
+          <header class="panel-head board-head">
+            <h3>Agent Performance Board</h3>
+            <span class="panel-sub" id="perf-sub">0 agents</span>
           </header>
-          <div class="objectives" id="objectives"></div>
+          <div class="perf-filters" id="perf-filters"></div>
+          <div class="perf-board" id="perf-board"></div>
         </section>
 
-        <section class="panel stream-panel grow">
-          <header class="panel-head">
-            <h3>Operations Stream</h3>
-            <span class="panel-sub">에이전트 업무 · 보고 · 결재 내러티브</span>
-          </header>
-          <div class="stream" id="stream"></div>
-        </section>
+        <!-- Backstage: pipeline · objectives · operations stream -->
+        <details class="backstage" id="backstage-ops" open>
+          <summary>운영 상세 · Pipeline / Objectives / Stream</summary>
+
+          <section class="pipeline" id="pipeline"></section>
+
+          <section class="kpi-grid" id="kpis"></section>
+
+          <section class="panel objectives-panel">
+            <header class="panel-head">
+              <h3>Daily Objectives</h3>
+              <span class="panel-sub" id="obj-sub">0 / 0</span>
+            </header>
+            <div class="objectives" id="objectives"></div>
+          </section>
+
+          <section class="panel stream-panel">
+            <header class="panel-head">
+              <h3>Operations Stream</h3>
+              <span class="panel-sub">에이전트 업무 · 보고 · 결재 내러티브</span>
+            </header>
+            <div class="stream" id="stream"></div>
+          </section>
+        </details>
       </main>
 
-      <!-- RIGHT · Mission inspector -->
-      <aside class="col col-inspector" id="col-inspector" aria-label="Mission inspector">
+      <!-- RIGHT · Watchlist + mission inspector -->
+      <aside class="col col-inspector" id="col-inspector" aria-label="Watchlist & missions">
         <button class="drawer-close drawer-only" id="insp-close" aria-label="닫기">✕</button>
+
+        <section class="panel watch-panel">
+          <header class="panel-head">
+            <h3>Watchlist · 관심 에이전트 TOP 10</h3>
+            <span class="panel-sub" id="watch-sub">0</span>
+          </header>
+          <div class="watchlist" id="watchlist"></div>
+        </section>
 
         <section class="panel alerts-panel">
           <header class="panel-head"><h3>Alerts</h3><span class="badge warn" id="alert-badge">0</span></header>
@@ -110,7 +143,7 @@
       </aside>
     </div>
 
-    <!-- ── Debug / raw log drawer (demoted technical surface) ─────────── -->
+    <!-- ── Debug / raw log drawer (demoted technical surface) ─────────────── -->
     <section class="debug-drawer" id="debug-drawer" aria-label="Technical log">
       <header class="debug-head">
         <div class="debug-title">
@@ -136,13 +169,31 @@
       <div class="debug-body" id="live-log"></div>
     </section>
 
-    <!-- ── Mobile bottom nav ─────────────────────────────────────────── -->
+    <!-- ── Mobile bottom nav ─────────────────────────────────────────────── -->
     <nav class="bottom-nav" aria-label="패널 전환">
-      <button class="bn" data-nav="map"><span>◫</span>Map</button>
-      <button class="bn active" data-nav="stream"><span>≋</span>Stream</button>
-      <button class="bn" data-nav="inspector"><span>◑</span>Missions</button>
-      <button class="bn" data-nav="debug"><span>⌗</span>Debug</button>
+      <button class="bn" data-nav="map"><span>◫</span>회사</button>
+      <button class="bn active" data-nav="stream"><span>≋</span>보드</button>
+      <button class="bn" data-nav="inspector"><span>★</span>관심</button>
+      <button class="bn" data-nav="debug"><span>⌗</span>로그</button>
     </nav>
+  </div>
+
+  <!-- ── Onboarding overlay (progressive disclosure first entry) ─────────── -->
+  <div class="onboard" id="onboard" aria-label="시작 가이드">
+    <div class="onboard-card">
+      <div class="onboard-top">
+        <span class="onboard-tag">오늘 뭐부터 할까요?</span>
+        <button class="onboard-x" id="onboard-skip" aria-label="닫기">✕</button>
+      </div>
+      <h2>에이전트 실적 시장에 오신 것을 환영합니다</h2>
+      <p>목표를 하나 고르면 해당 라인의 에이전트 성과 보드로 바로 이동합니다.
+         복잡한 런타임·로그는 뒤(Debug)에 그대로 있습니다.</p>
+      <div class="onboard-cards" id="onboard-cards"></div>
+      <div class="onboard-actions">
+        <button class="onboard-btn ghost" id="onboard-seed" title="데모 회사 데이터 채우기">⟲ 데모 채우기</button>
+        <button class="onboard-btn primary" id="onboard-start">전체 보드로 시작 →</button>
+      </div>
+    </div>
   </div>
 
   <script src="config.js"></script>
