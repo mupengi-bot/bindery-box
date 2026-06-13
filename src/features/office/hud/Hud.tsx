@@ -109,7 +109,7 @@ export function Hud({
 
       {/* bottom-center: goal composer */}
       <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, padding: "0 200px" }}>
-        <GoalComposer missions={ws?.missions ?? []} agents={ws?.agents ?? []} initialLane={composerLane} openNonce={composerOpenNonce} onRun={runMission} onCreateAgent={data.createAgent} onReseed={reseed} busy={busy} />
+        <GoalComposer missions={ws?.missions ?? []} agents={ws?.agents ?? []} roleTemplates={data.roleTemplates} initialLane={composerLane} openNonce={composerOpenNonce} onRun={runMission} onCreateTask={data.createTask} onCreateAgent={data.createAgent} onReseed={reseed} busy={busy} />
       </div>
 
       {/* error toast */}

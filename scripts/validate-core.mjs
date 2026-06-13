@@ -37,16 +37,37 @@ async function main() {
   const know = await handleRequest({ method: "GET", pathname: "/api/knowledge/search", searchParams: new URLSearchParams({ q: "납기" }) });
   check("GET knowledge/search → results[]", know.status === 200 && Array.isArray(know.body.results));
 
-  // 7) agent creation flow — create a safe custom staff member
+  // 7) role templates for richer staff creation
+  const templates = await handleRequest({ method: "GET", pathname: "/api/role-templates" });
+  check("GET role-templates → presets", templates.status === 200 && Array.isArray(templates.body.templates) && templates.body.templates.length >= 4);
+
+  // 8) agent creation flow — create a safe custom staff member from a template
   const createAgent = await handleRequest({
     method: "POST",
     pathname: "/api/workspaces/default/agents",
-    body: { name: "Demo Planner", role: "계획 담당", lane: "control", requestedBy: "ci" },
+    body: { name: "Demo Planner", role: "계획 담당", lane: "control", templateId: "tpl_control_ops", requestedBy: "ci" },
   });
   check("POST workspace agents → agent.create", createAgent.status === 200 && createAgent.body.ok === true && createAgent.body.result?.agent?.prompt, createAgent.body.result?.agent?.id);
 
-  // 8) task run + approval flow — pick a runnable mission from the workstream
-  const runnable = ws.body.missions.find((m) => m.runnable);
+  // 9) persisted movement lifecycle
+  const move = await handleRequest({
+    method: "POST",
+    pathname: `/api/agents/${createAgent.body.result.agent.id}/move`,
+    body: { x: 1.5, z: -2.5, source: "floor", requestedBy: "ci" },
+  });
+  check("POST agent move → agent.move.requested", move.status === 200 && move.body.ok === true && move.body.result?.moveTarget?.status === "accepted");
+
+  // 10) zone work-request creates a real task
+  const createdTask = await handleRequest({
+    method: "POST",
+    pathname: "/api/workspaces/default/tasks",
+    body: { title: "생산 구역 테스트 업무", lane: "production", enqueue: true, requestedBy: "ci" },
+  });
+  check("POST workspace tasks → task.create", createdTask.status === 200 && createdTask.body.ok === true && createdTask.body.result?.task?.origin === "zone.work-request", createdTask.body.result?.task?.id);
+
+  // 11) task run + approval flow — pick a runnable mission from the workstream
+  const refreshedWs = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/workstream" });
+  const runnable = refreshedWs.body.missions.find((m) => m.runnable);
   check("workstream has a runnable mission", !!runnable, runnable?.taskId);
   if (runnable) {
     const run = await handleRequest({ method: "POST", pathname: `/api/tasks/${runnable.taskId}/run`, body: { requestedBy: "ci" } });

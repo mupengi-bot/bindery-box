@@ -7,6 +7,7 @@ export const CommandType = Object.freeze({
   taskRun: "task.run",
   taskCreate: "task.create",
   agentCreate: "agent.create",
+  agentMoveRequest: "agent.move.requested",
   approvalDecide: "approval.decide",
   userMessageIngest: "user.message.ingest",
   agentRunEnqueue: "agent.run.enqueue",
@@ -15,6 +16,7 @@ export const CommandType = Object.freeze({
 
 export const EventType = Object.freeze({
   userMessageReceived: "user.message.received",
+  taskCreated: "task.created",
   taskRunStarted: "task.run.started",
   taskRunCompleted: "task.run.completed",
   taskRunFailed: "task.run.failed",
@@ -30,6 +32,9 @@ export const EventType = Object.freeze({
   approvalRequested: "approval.requested",
   approvalDecided: "approval.decided",
   agentCreated: "agent.created",
+  agentMoveRequested: "agent.move.requested",
+  agentMoveAccepted: "agent.move.accepted",
+  agentMoveProjected: "agent.move.projected",
   officeMessagePosted: "office.message.posted",
   auditAppended: "audit.appended"
 });
@@ -39,6 +44,7 @@ const COMMAND_SCHEMAS = {
   [CommandType.taskRun]: ["taskId", "requestedBy"],
   [CommandType.taskCreate]: ["workspaceId", "title", "requestedBy"],
   [CommandType.agentCreate]: ["workspaceId", "name", "role", "requestedBy"],
+  [CommandType.agentMoveRequest]: ["workspaceId", "agentId", "x", "z", "requestedBy"],
   [CommandType.approvalDecide]: ["approvalId", "decision", "decidedBy"],
   [CommandType.userMessageIngest]: ["workspaceId", "provider", "channelRef", "senderRef", "text", "providerEventId"],
   [CommandType.agentRunEnqueue]: ["workspaceId", "taskId", "agentId", "requestedBy", "goal"],

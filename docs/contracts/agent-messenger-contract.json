@@ -189,6 +189,18 @@
         "requestedBy"
       ],
       "description": "Create a public-safe demo staff member/person with lane persona and role prompt."
+    },
+    {
+      "type": "agent.move.requested",
+      "surface": "mission-control",
+      "requiredFields": [
+        "workspaceId",
+        "agentId",
+        "x",
+        "z",
+        "requestedBy"
+      ],
+      "description": "Persist an RTS-style movement command for a selected office agent."
     }
   ],
   "events": [
@@ -273,6 +285,38 @@
         "audit"
       ],
       "description": "A new agent/person joined the office with safe default capabilities."
+    },
+    {
+      "type": "task.created",
+      "source": "control-plane",
+      "projection": [
+        "workstream",
+        "3d-office",
+        "messenger-thread",
+        "live-log",
+        "audit"
+      ],
+      "description": "A zone work request created a real queued task."
+    },
+    {
+      "type": "agent.move.accepted",
+      "source": "runtime",
+      "projection": [
+        "workstream",
+        "3d-office",
+        "live-log",
+        "audit"
+      ],
+      "description": "Policy accepted a movement command and persisted the move target."
+    },
+    {
+      "type": "agent.move.projected",
+      "source": "office",
+      "projection": [
+        "3d-office",
+        "live-log"
+      ],
+      "description": "The 3D office projection received the persisted agent move target."
     }
   ],
   "adapters": {

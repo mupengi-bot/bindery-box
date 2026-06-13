@@ -26,6 +26,7 @@ import {
 import { listConnectors, buildCapabilityMap } from "../../packages/connectors/src/index.mjs";
 import { createKnowledgeBase, searchKnowledge } from "../../packages/knowledge/src/index.mjs";
 import { getGoldenImage, projectGoldenImage } from "../../packages/golden-image/src/index.mjs";
+import { listRoleTemplates } from "../../packages/domain/src/index.mjs";
 
 // Module-scoped store: persists across warm invocations, reseeds on cold start.
 let sharedStore = null;
@@ -110,6 +111,11 @@ export async function handleRequest({
     return { status: 200, body: { connectors: listConnectors(), capabilityMap: buildCapabilityMap() } };
   }
 
+  // --- role template catalog (office hiring presets) ---
+  if (method === "GET" && route === "/role-templates") {
+    return { status: 200, body: { templates: listRoleTemplates() } };
+  }
+
   // --- knowledge graph ---
   if (method === "GET" && route === "/knowledge/search") {
     const state = await store.load();
@@ -154,6 +160,45 @@ export async function handleRequest({
     return { status: 200, body: { ok: outcome.ok, decision: outcome.decision, result: outcome.result, state: outcome.state } };
   }
 
+  const taskCreateMatch = route.match(/^\/workspaces\/([^/]+)\/tasks$/);
+  if (method === "POST" && taskCreateMatch) {
+    const outcome = await executeCommand({
+      store,
+      command: {
+        type: CommandType.taskCreate,
+        workspaceId: taskCreateMatch[1],
+        title: body.title ?? "새 업무 요청",
+        lane: body.lane ?? "control",
+        priority: body.priority ?? "normal",
+        requiresApproval: body.requiresApproval ?? false,
+        expectedOutput: body.expectedOutput,
+        requiredCapabilities: body.requiredCapabilities,
+        enqueue: body.enqueue ?? true,
+        requestedBy: body.requestedBy ?? "operator",
+      },
+      office: office(),
+    });
+    return { status: 200, body: { ok: outcome.ok, decision: outcome.decision, result: outcome.result, state: outcome.state } };
+  }
+
+  const agentMoveMatch = route.match(/^\/agents\/([^/]+)\/move$/);
+  if (method === "POST" && agentMoveMatch) {
+    const outcome = await executeCommand({
+      store,
+      command: {
+        type: CommandType.agentMoveRequest,
+        workspaceId: body.workspaceId ?? "default",
+        agentId: agentMoveMatch[1],
+        x: body.x,
+        z: body.z,
+        source: body.source ?? "floor",
+        requestedBy: body.requestedBy ?? "operator",
+      },
+      office: office(),
+    });
+    return { status: 200, body: { ok: outcome.ok, decision: outcome.decision, result: outcome.result, state: outcome.state } };
+  }
+
   const agentCreateMatch = route.match(/^\/workspaces\/([^/]+)\/agents$/);
   if (method === "POST" && agentCreateMatch) {
     const outcome = await executeCommand({
@@ -164,6 +209,7 @@ export async function handleRequest({
         name: body.name ?? "New Agent",
         role: body.role ?? "AI 직원",
         lane: body.lane ?? "control",
+        templateId: body.templateId,
         persona: body.persona,
         prompt: body.prompt,
         capabilities: body.capabilities,

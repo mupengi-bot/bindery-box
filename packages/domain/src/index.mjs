@@ -102,6 +102,50 @@ export function buildAgentPersona({ role = "", lane = "control" } = {}) {
   return LANE_PERSONA[lane] ?? `${role || "팀 동료"} 역할의 AI 직원입니다.`;
 }
 
+// --- Role template catalog --------------------------------------------------
+// Public-safe hiring presets surfaced to the office "직원 생성" flow. Each
+// template proposes a role, lane, KPI and a set of NON-sensitive capability
+// labels plus a generated persona/prompt PREVIEW so an operator can read exactly
+// what the new colleague will be before creating it. Capabilities here are
+// descriptive skill labels only — never capability GRANTS — so a templated hire
+// still starts with no sensitive permissions (policy keeps blocking until an
+// operator grants them in a later governance flow). Never embed secrets,
+// private paths, credentials, vendor or model names in a template.
+const ROLE_TEMPLATE_DEFS = Object.freeze([
+  { id: "tpl_production_ops", lane: "production", label: "생산 운영 담당", role: "생산 운영 담당",
+    capabilities: ["생산일보 요약", "납기 위험 탐지", "비가동 원인 정리"], kpi: "납기 위험 알림 시간 단축" },
+  { id: "tpl_sales_followup", lane: "sales", label: "영업 후속 담당", role: "영업 후속 담당",
+    capabilities: ["견적 후속 조치", "고객 응답 초안", "수주 가능성 요약"], kpi: "견적 응답 리드타임 단축" },
+  { id: "tpl_scope3_data", lane: "scope3", label: "Scope 3 데이터 담당", role: "공급망 탄소 데이터 담당",
+    capabilities: ["협력사 데이터 누락 탐지", "탄소 자료 요청 초안", "ESG 리포트 정리"], kpi: "탄소 데이터 누락률 감소" },
+  { id: "tpl_control_ops", lane: "control", label: "관제·승인 담당", role: "승인·감사 담당",
+    capabilities: ["권한 정책 점검", "승인 큐 관리", "감사 로그 정리"], kpi: "외부 발송 승인 추적 유지" }
+]);
+
+// Expand a template definition into a full, render-ready preset including the
+// public-safe persona + prompt preview text the UI shows before creation.
+export function expandRoleTemplate(def) {
+  return {
+    id: def.id,
+    lane: def.lane,
+    label: def.label,
+    role: def.role,
+    capabilities: def.capabilities.slice(),
+    kpi: def.kpi,
+    persona: buildAgentPersona({ role: def.role, lane: def.lane }),
+    promptPreview: buildAgentPrompt({ role: def.role, lane: def.lane })
+  };
+}
+
+export function listRoleTemplates() {
+  return ROLE_TEMPLATE_DEFS.map(expandRoleTemplate);
+}
+
+export function getRoleTemplate(id) {
+  const def = ROLE_TEMPLATE_DEFS.find((t) => t.id === id);
+  return def ? expandRoleTemplate(def) : null;
+}
+
 export function createTask(fields) {
   const ts = nowIso();
   return {

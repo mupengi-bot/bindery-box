@@ -8,6 +8,8 @@ import { makeId, nowIso } from "../../domain/src/index.mjs";
 // Maps a runtime event to a channel + human-facing message, or null to skip.
 function projectEvent(event) {
   switch (event.type) {
+    case "task.created":
+      return { channel: "#tasks", kind: "task_created", text: `새 업무 생성: ${event.title ?? event.taskId}` };
     case "task.run.started":
       return { channel: "#tasks", kind: "task_thread", text: `업무 실행 시작: ${event.taskTitle ?? event.taskId}` };
     case "task.run.completed":

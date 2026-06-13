@@ -7,12 +7,14 @@ import {
   TaskStatus,
   AgentStatus,
   OFFICE_LANES,
+  createTask,
   createTaskRun,
   createApprovalRequest,
   createAuditEvent,
   createAgentInstance,
   buildAgentPersona,
   buildAgentPrompt,
+  getRoleTemplate,
   nowIso
 } from "../../domain/src/index.mjs";
 import {
@@ -184,35 +186,144 @@ function handleApprovalDecide(state, command) {
 // blocks any sensitive tool use until an operator grants it explicitly.
 function handleAgentCreate(state, command) {
   const c = createCollector(state);
-  const lane = OFFICE_LANES.includes(command.lane) ? command.lane : "control";
-  const role = String(command.role ?? "").trim();
+  // A role template (optional) supplies public-safe defaults for lane / role /
+  // capabilities / persona / prompt / kpi. Any explicit field on the command
+  // still wins, so the operator can tweak a template before hiring.
+  const template = command.templateId ? getRoleTemplate(command.templateId) : null;
+  const lane = OFFICE_LANES.includes(command.lane)
+    ? command.lane
+    : (template && OFFICE_LANES.includes(template.lane) ? template.lane : "control");
+  const role = String(command.role ?? template?.role ?? "").trim();
   const name = String(command.name ?? "").trim();
   const channelByLane = { production: "#production", sales: "#sales", scope3: "#scope3", control: "#approvals" };
+  const capabilities = Array.isArray(command.capabilities)
+    ? command.capabilities
+    : (template?.capabilities ?? []);
 
   const agent = createAgentInstance({
     workspaceId: state.workspace?.id ?? "ws_default",
-    definitionId: `def_custom_${lane}`,
+    definitionId: template ? `def_${template.id}` : `def_custom_${lane}`,
     name,
     role,
     lane,
     channel: command.channel || channelByLane[lane],
-    origin: "office.create",
+    origin: template ? `office.template:${template.id}` : "office.create",
     capabilityGrants: [], // safe default: no sensitive grants until explicitly granted
-    capabilities: Array.isArray(command.capabilities)
-      ? command.capabilities.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
-      : [],
-    persona: String(command.persona ?? "").trim() || buildAgentPersona({ role, lane }),
-    prompt: String(command.prompt ?? "").trim() || buildAgentPrompt({ role, lane }),
-    kpi: String(command.kpi ?? "").trim()
+    capabilities: capabilities.map((x) => String(x).trim()).filter(Boolean).slice(0, 8),
+    persona: String(command.persona ?? template?.persona ?? "").trim() || buildAgentPersona({ role, lane }),
+    prompt: String(command.prompt ?? template?.promptPreview ?? "").trim() || buildAgentPrompt({ role, lane }),
+    kpi: String(command.kpi ?? template?.kpi ?? "").trim()
   });
   state.agents = state.agents ?? [];
   state.agents.push(agent);
 
   c.emit(EventType.agentCreated,
-    { agentId: agent.id, name: agent.name, role: agent.role, lane: agent.lane, requestedBy: command.requestedBy },
+    { agentId: agent.id, name: agent.name, role: agent.role, lane: agent.lane, templateId: template?.id ?? null, requestedBy: command.requestedBy },
     { actorType: "human", actor: command.requestedBy ?? "operator", target: agent.id, message: `${agent.name || agent.role} 직원 합류 (${lane})` });
 
   return { ok: true, decision: "created", events: c.events, result: { agent } };
+}
+
+// Route a zone work request to the most appropriate colleague in that lane.
+// Prefers a seeded lane leader, then any agent already assigned to the lane,
+// then any non-disabled agent. Returns null only if the roster is empty.
+function routeAgentForLane(state, lane) {
+  const agents = (state.agents ?? []).filter((a) => a.status !== AgentStatus.disabled);
+  return agents.find((a) => a.lane === lane && /leader|리더/i.test(`${a.role} ${a.definitionId}`))
+    ?? agents.find((a) => a.lane === lane)
+    ?? agents[0]
+    ?? null;
+}
+
+// zone.work-request.created -> task.create. Turns a department work request into
+// a real queued task, routes it to a lane colleague, and (optionally) enqueues a
+// run intent. The task then surfaces as a runnable mission in the workstream
+// projection, so the operator can run/enqueue it like any seeded mission.
+function handleTaskCreate(state, command) {
+  const c = createCollector(state);
+  const lane = OFFICE_LANES.includes(command.lane) ? command.lane : "control";
+  const agent = routeAgentForLane(state, lane);
+  const title = String(command.title ?? "").trim() || "새 업무 요청";
+  const requiredCapabilities = Array.isArray(command.requiredCapabilities)
+    ? command.requiredCapabilities.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
+    : [];
+
+  const task = createTask({
+    workspaceId: state.workspace?.id ?? "ws_default",
+    title,
+    category: lane,
+    lane,
+    priority: ["low", "normal", "high"].includes(command.priority) ? command.priority : "normal",
+    requiresApproval: Boolean(command.requiresApproval),
+    requiredCapabilities,
+    assignedAgentId: agent?.id,
+    ownerAgentId: agent?.id,
+    origin: "zone.work-request",
+    source: "office.zone-request",
+    expectedOutput: String(command.expectedOutput ?? "").trim() || "요청 처리 결과 초안"
+  });
+  state.tasks = state.tasks ?? [];
+  state.tasks.push(task);
+
+  c.emit(EventType.taskCreated,
+    { taskId: task.id, title: task.title, lane, agentId: agent?.id, requestedBy: command.requestedBy },
+    { actorType: "human", actor: command.requestedBy ?? "operator", target: task.id,
+      message: `${lane} 구역 업무 요청 생성: ${title}${agent ? ` → ${agent.name}` : ""}` });
+
+  // Optional enqueue intent — records that the work is queued for the routed
+  // agent without auto-running it (operator keeps the human-in-the-loop run).
+  if (command.enqueue && agent) {
+    c.emit(EventType.agentRunQueued,
+      { taskId: task.id, agentId: agent.id, goal: title, requestedBy: command.requestedBy },
+      { actorType: "human", actor: command.requestedBy ?? "operator", target: task.id,
+        message: `${agent.name} 실행 큐에 추가됨` });
+  }
+
+  return { ok: true, decision: "created", events: c.events, result: { task, agent } };
+}
+
+// agent.move.requested lifecycle. Movement is persisted as a real command/event
+// flow (not just UI-local): policy authorises the move, the runtime records the
+// agent's move target on canonical state, and three events
+// (requested -> accepted -> projected) capture the lifecycle so the workstream
+// projection can replay the avatar position after a refresh.
+function handleAgentMove(state, command, policy) {
+  const c = createCollector(state);
+  const agent = (state.agents ?? []).find((a) => a.id === command.agentId);
+
+  // 1) Policy check BEFORE mutating canonical state.
+  const verdict = (policy.evaluateAgentMove ?? defaultPolicy.evaluateAgentMove)(agent);
+  c.emit(EventType.agentMoveRequested,
+    { agentId: command.agentId, x: command.x, z: command.z, requestedBy: command.requestedBy });
+
+  if (verdict.decision === Decision.block) {
+    c.emit(EventType.toolCallBlocked,
+      { agentId: command.agentId, reason: verdict.reason },
+      { actorType: "system", actor: "policy", target: command.agentId, message: `이동 차단: ${verdict.reason}` });
+    return { ok: false, decision: verdict.decision, events: c.events, result: { blocked: verdict } };
+  }
+
+  // 2) Runtime action — persist the move target on the agent.
+  const moveTarget = {
+    x: Number(command.x) || 0,
+    z: Number(command.z) || 0,
+    source: command.source === "zone" ? "zone" : "floor",
+    issuedAt: nowIso(),
+    status: "accepted"
+  };
+  agent.moveTarget = moveTarget;
+  agent.position = { x: moveTarget.x, z: moveTarget.z };
+  agent.updatedAt = nowIso();
+
+  // 3) Lifecycle events: accepted (control-plane) -> projected (office surface).
+  c.emit(EventType.agentMoveAccepted,
+    { agentId: agent.id, x: moveTarget.x, z: moveTarget.z, requestedBy: command.requestedBy },
+    { actorType: "human", actor: command.requestedBy ?? "operator", target: agent.id,
+      message: `${agent.name} 이동 명령 수락 (${moveTarget.x.toFixed(1)}, ${moveTarget.z.toFixed(1)})` });
+  c.emit(EventType.agentMoveProjected,
+    { agentId: agent.id, x: moveTarget.x, z: moveTarget.z });
+
+  return { ok: true, decision: verdict.decision, events: c.events, result: { agent, moveTarget } };
 }
 
 // --- public dispatch --------------------------------------------------------
@@ -236,6 +347,12 @@ export function dispatch(state, command, options = {}) {
       break;
     case CommandType.agentCreate:
       outcome = handleAgentCreate(state, command);
+      break;
+    case CommandType.taskCreate:
+      outcome = handleTaskCreate(state, command);
+      break;
+    case CommandType.agentMoveRequest:
+      outcome = handleAgentMove(state, command, policy);
       break;
     default:
       throw new Error(`Unsupported command type: ${command.type}`);
@@ -304,6 +421,11 @@ export function projectOverview(state, workspaceId) {
 //   * office  — Mattermost-mock channel posts
 // Every entry is { id, ts, source, level, actor, channel, action, message }.
 const LIVE_EVENT_META = Object.freeze({
+  "task.created": { level: "info", label: "업무 생성" },
+  "agent.move.requested": { level: "info", label: "이동 요청" },
+  "agent.move.accepted": { level: "info", label: "이동 수락" },
+  "agent.move.projected": { level: "info", label: "이동 반영" },
+  "agent.run.queued": { level: "info", label: "실행 큐 추가" },
   "task.run.started": { level: "running", label: "업무 실행 시작" },
   "task.run.completed": { level: "success", label: "업무 완료" },
   "task.run.failed": { level: "error", label: "업무 실패" },
@@ -319,6 +441,7 @@ const LIVE_EVENT_META = Object.freeze({
 
 function liveEventDetail(event) {
   return event.taskTitle
+    || event.title
     || event.resultSummary
     || event.reason
     || (event.decision ? `결정: ${event.decision}` : "")
@@ -552,6 +675,7 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
       requiresApproval: !!t.requiresApproval,
       reward: lane.reward,
       summary: t.output || t.expectedOutput || "",
+      origin: t.origin ?? "seed",
       runnable: status === "queued" || status === "running"
     };
   });
@@ -572,7 +696,11 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
       persona: a.persona ?? "",
       prompt: a.prompt ?? "",
       origin: a.origin ?? "seed",
-      kpi: a.kpi ?? ""
+      kpi: a.kpi ?? "",
+      // Persisted office-board placement so a refresh replays the avatar's last
+      // commanded move target (agent.move.requested lifecycle).
+      position: a.position ?? null,
+      moveTarget: a.moveTarget ?? null
     };
   });
 

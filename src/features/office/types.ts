@@ -21,6 +21,8 @@ export interface WorkstreamAgent {
   persona?: string;
   prompt?: string;
   origin?: string;
+  moveTarget?: { x: number; z: number; source?: "floor" | "zone"; issuedAt?: string | number; status?: string } | null;
+  position?: { x: number; z: number } | null;
   kpi: string;
 }
 
@@ -247,4 +249,16 @@ export interface GoldenImage {
   workspaceId?: string;
   generatedAt?: string | null;
   status?: { planesTotal: number; planesLive: number; invariants: number; surface: string };
+}
+
+
+export interface RoleTemplate {
+  id: string;
+  lane: LaneId;
+  label: string;
+  role: string;
+  capabilities: string[];
+  kpi: string;
+  persona: string;
+  promptPreview: string;
 }

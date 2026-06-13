@@ -51,4 +51,19 @@ export function evaluateTaskRun(task, agent, options = {}) {
   };
 }
 
-export const defaultPolicy = Object.freeze({ evaluateTaskRun });
+// Evaluate whether an operator may direct an agent to move on the office board.
+// Movement is a low-risk, presentational command, but it still passes through
+// policy so the invariant (Command -> Policy Check -> ...) holds for every
+// mutating flow. A disabled agent cannot be commanded; everything else is
+// allowed. Returns { decision, reason }.
+export function evaluateAgentMove(agent) {
+  if (!agent) {
+    return { decision: Decision.block, reason: "대상 에이전트를 찾을 수 없음" };
+  }
+  if (agent.status === "disabled") {
+    return { decision: Decision.block, reason: "비활성 에이전트는 이동을 명령할 수 없음" };
+  }
+  return { decision: Decision.allow, reason: "이동 명령 허용" };
+}
+
+export const defaultPolicy = Object.freeze({ evaluateTaskRun, evaluateAgentMove });

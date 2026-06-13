@@ -1,15 +1,16 @@
 # RTS Office Interaction Model
 
-BINDERY BOX uses the Claw3D office as an RTS-like operating board: the camera is stable, staff are selectable units, floor clicks express movement intent, and department zones are work-request surfaces.
+BINDERY BOX uses the Claw3D office as an RTS-like operating board: the camera is stable, staff are selectable units, floor clicks express persisted movement commands, and department zones are work-request surfaces.
 
 ## UX invariants
 
 1. **Fixed camera first** — the default view is an isometric office board. Free orbit is not the primary interaction.
-2. **Select unit, then command** — clicking an agent selects that person. Clicking the floor creates an `agent.move.requested`-style UI intent and moves the selected avatar toward that coordinate.
+2. **Select unit, then command** — clicking an agent selects that person. Clicking the floor creates `agent.move.requested`, records a target, and projects the avatar there.
 3. **Zones are actionable** — every department room has a visible `＋ 업무 요청` station. Clicking a station opens the Goal Composer filtered to that lane.
-4. **People expose role prompts** — selecting a person opens a card with role, persona, capabilities, KPI, active mission, and public-safe prompt text.
-5. **People can be created** — the composer can create a new demo staff member through `agent.create`. Created agents start with no sensitive capability grants.
-6. **Commands remain projections** — movement and request UX must not bypass `Command -> Policy Check -> Runtime Action -> Event(s) -> Persist -> Projection` when wired to real runtime.
+4. **Zone requests create real tasks** — typed zone requests go through `task.create`, produce `task.created`, and surface as runnable missions.
+5. **People expose role prompts** — selecting a person opens a card with role, persona, capabilities, KPI, active mission, and public-safe prompt text.
+6. **People can be created from templates** — the composer exposes role templates, prompt previews, and safe default permissions.
+7. **Commands remain projections** — movement, work requests, and hires go through `Command -> Policy Check -> Runtime Action -> Event(s) -> Persist -> Projection`.
 
 ## Interaction flow
 
@@ -19,12 +20,17 @@ BINDERY BOX uses the Claw3D office as an RTS-like operating board: the camera is
 click agent
   -> selectedAgentId
 click floor/zone coordinate
-  -> UI move target marker
-  -> avatar route override
-future: POST agent.move.requested command
+  -> optimistic local marker
+  -> POST /api/agents/:id/move
+  -> command: agent.move.requested
+  -> policy check
+  -> event: agent.move.accepted
+  -> event: agent.move.projected
+  -> workstream agent.moveTarget
+  -> avatar route override after refresh
 ```
 
-The current implementation is UI-local so it is safe and immediate. The command naming is reserved for real runtime wiring.
+The UI remains immediate, but the canonical state is persisted on the agent projection.
 
 ### Request work from a zone
 
@@ -33,8 +39,15 @@ click department work station
   -> Goal Composer opens
   -> lane filter is set
   -> request text is prefilled
-  -> operator dispatches matching mission or creates a future task
+operator submits request
+  -> POST /api/workspaces/:id/tasks
+  -> command: task.create
+  -> event: task.created
+  -> optional event: agent.run.queued
+  -> workstream mission appears as runnable
 ```
+
+Zone work is no longer only a UI prefill; it becomes a real task in the platform lifecycle.
 
 ### Inspect a person
 
@@ -50,10 +63,18 @@ click agent/person
 
 ```txt
 Goal Composer > 직원 생성
+  -> choose role template or custom
+  -> preview public-safe prompt
   -> POST /api/workspaces/:id/agents
   -> command: agent.create
   -> event: agent.created
   -> workstream projection shows new staff member
+```
+
+Templates are exposed by:
+
+```txt
+GET /api/role-templates
 ```
 
 ## Public-safe prompt policy
@@ -64,30 +85,25 @@ Newly created agents receive no sensitive `capabilityGrants` by default. Operato
 
 ## Current files
 
-- `src/features/office/OfficeExperience.tsx` — fixed RTS camera, selected agent, move targets, lane request focus.
+- `src/features/office/OfficeExperience.tsx` — fixed RTS camera, selected agent, optimistic + persisted move targets, lane request focus.
 - `src/features/office/scene/OfficeScene.tsx` — floor clicks, move markers, zone request stations.
-- `src/features/office/hud/GoalComposer.tsx` — lane-filtered requests and demo staff creation.
+- `src/features/office/hud/GoalComposer.tsx` — lane-filtered task creation, template-based staff creation, prompt preview.
 - `src/features/office/hud/AgentPanel.tsx` — persona/prompt display.
-- `packages/contracts/src/index.mjs` — `agent.create` command and `agent.created` event.
-- `packages/runtime/src/index.mjs` — safe demo agent creation handler.
-- `packages/domain/src/index.mjs` — default role persona/prompt templates.
+- `packages/contracts/src/index.mjs` — `task.create`, `agent.create`, `agent.move.requested` commands and related events.
+- `packages/runtime/src/index.mjs` — task creation, movement lifecycle, safe demo agent creation handlers.
+- `packages/domain/src/index.mjs` — default role persona/prompt templates and role-template catalog.
 
 ## Next real-runtime upgrade
 
-Replace UI-local movement with persisted command/event flow:
+The next step is replacing mock execution with a real streaming agent worker:
 
 ```txt
-agent.move.requested
-  -> policy: is operator allowed to direct this agent?
-  -> event: agent.move.accepted
-  -> projection: office avatar target
+task.created
+  -> agent.run.queued
+  -> agent.run.started
+  -> agent.stream.delta*
+  -> approval.requested?
+  -> agent.run.completed
 ```
 
-Replace lane request prefill with real task creation:
-
-```txt
-zone.work-request.created
-  -> task.create
-  -> agent router
-  -> agent.run.enqueue
-```
+The RTS office should continue consuming projections only; it should not call tools or mutate business state directly.

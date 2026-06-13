@@ -19,9 +19,12 @@ const doc = await read("docs/architecture/rts-office-interaction.md");
 
 check("fixed RTS camera declared", exp.includes("RTS_CAMERA") && !exp.includes("OrbitControls"));
 check("selected agent move targets", exp.includes("moveTargets") && scene.includes("MoveTargetMarker"));
+check("persisted move API wired", exp.includes("data.moveAgent") && runtime.includes("handleAgentMove") && contracts.includes("agent.move.requested"));
 check("floor click movement", scene.includes("onMoveSelected") && scene.includes("issueMove(e.point"));
 check("zone work request station", scene.includes("WorkRequestStation") && scene.includes("＋ 업무 요청"));
+check("zone request creates task", composer.includes("onCreateTask") && composer.includes("업무 생성") && runtime.includes("handleTaskCreate"));
 check("Goal Composer lane focus", composer.includes("initialLane") && composer.includes("직원 생성"));
+check("role templates visible", composer.includes("roleTemplates") && composer.includes("Prompt Preview"));
 check("agent card shows role prompt", panel.includes("ROLE PROMPT") && panel.includes("agent.prompt"));
 check("agent.create command contract", contracts.includes("agent.create") && contracts.includes("agent.created"));
 check("runtime creates safe agents", runtime.includes("handleAgentCreate") && runtime.includes("capabilityGrants: []"));

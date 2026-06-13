@@ -20,6 +20,21 @@ export default function OfficeExperience() {
 
   const agents = useMemo(() => data.workstream?.agents ?? [], [data.workstream]);
   const missions = useMemo(() => data.workstream?.missions ?? [], [data.workstream]);
+  const projectedMoveTargets = useMemo(() => {
+    const out: Record<string, MoveTarget> = {};
+    for (const a of agents) {
+      if (a.moveTarget && typeof a.moveTarget.x === "number" && typeof a.moveTarget.z === "number") {
+        out[a.id] = {
+          x: a.moveTarget.x,
+          z: a.moveTarget.z,
+          source: a.moveTarget.source === "zone" ? "zone" : "floor",
+          issuedAt: typeof a.moveTarget.issuedAt === "number" ? a.moveTarget.issuedAt : Date.parse(String(a.moveTarget.issuedAt ?? Date.now())),
+        };
+      }
+    }
+    return out;
+  }, [agents]);
+  const visibleMoveTargets = useMemo(() => ({ ...projectedMoveTargets, ...moveTargets }), [projectedMoveTargets, moveTargets]);
 
   const requestLane = (lane: LaneId) => {
     setComposerLane(lane);
@@ -28,7 +43,9 @@ export default function OfficeExperience() {
 
   const moveSelected = (target: MoveTarget) => {
     if (!selectedId) return;
-    setMoveTargets((cur) => ({ ...cur, [selectedId]: target }));
+    const agentId = selectedId;
+    setMoveTargets((cur) => ({ ...cur, [agentId]: target }));
+    void data.moveAgent({ agentId, x: target.x, z: target.z, source: target.source });
   };
 
   return (
@@ -45,7 +62,7 @@ export default function OfficeExperience() {
           agents={agents}
           missions={missions}
           selectedId={selectedId}
-          moveTargets={moveTargets}
+          moveTargets={visibleMoveTargets}
           onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))}
           onMoveSelected={moveSelected}
           onRequestLane={requestLane}
