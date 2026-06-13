@@ -53,9 +53,10 @@ const view = {
   detailAgentId: null,   // agent whose detail drawer is open (null = closed)
   pending: new Set(),    // approvalIds with an in-flight optimistic decision
   // Focus / progressive disclosure front stage.
-  layer: "focus",        // focus | performance | process | organization
+  layer: "focus",        // focus | office | performance | process | organization
   selectedTaskId: null,  // task currently driving the focus flow
-  selectedLabel: ""      // human label of the selected goal/mission
+  selectedLabel: "",     // human label of the selected goal/mission
+  officeAgentId: null    // agent currently highlighted in the 3D office panel
 };
 function isWatched(id) { return view.watched.has(id); }
 let liveTimer = null;
@@ -719,6 +720,221 @@ function renderAgentDetail() {
   });
 }
 
+// ── 3D Office (native CSS isometric agent office · Claw-style) ───────────
+// Projects the workstream (agents · lanes · missions · live stream) onto a
+// CSS-perspective office floor: lane "zones" with desk pods, a center meeting
+// room seating agents in approval/review, a pipeline back-wall, floating live
+// event bubbles, and a selected-agent side panel. Pure CSS/SVG — no WebGL.
+// See docs/office-claw3d-bridge.md for the planned Claw3D/Three.js adapter.
+
+// Lane → office zone (floor coordinates in %), color and label.
+const OFFICE_ZONES = {
+  production: { x: 27, y: 30, color: "#12b886", label: "생산", glyph: "▣" },
+  sales:      { x: 73, y: 30, color: "#3182f6", label: "영업", glyph: "◆" },
+  scope3:     { x: 27, y: 73, color: "#7048e8", label: "Scope 3", glyph: "❖" },
+  control:    { x: 73, y: 73, color: "#ff9f1c", label: "관제", glyph: "◈" }
+};
+const OFFICE_FALLBACK_ZONE = { x: 50, y: 86, color: "#8b95a1", label: "기타", glyph: "◌" };
+// Deterministic cluster offsets (%) so pods spread around a lane desk.
+const POD_OFFSETS = [[-8, -3], [8, -3], [-8, 8], [8, 8], [0, -8], [0, 13], [-15, 3], [15, 3]];
+
+function officeZone(laneId) { return OFFICE_ZONES[laneId] || OFFICE_FALLBACK_ZONE; }
+
+function renderOfficeWall(ws) {
+  const el = $("office-wall");
+  if (!el) return;
+  const stages = ws.pipeline?.stages || [];
+  el.innerHTML = stages.length ? stages.map((s) => `
+    <div class="ow-panel" data-k="${esc(s.id)}">
+      <span class="ow-count">${s.count ?? 0}</span>
+      <span class="ow-label">${esc(s.label)}</span>
+    </div>`).join("") : `<div class="list-empty">파이프라인 단계가 없습니다.</div>`;
+}
+
+function renderOfficeFloor(ws) {
+  const floor = $("office-floor");
+  if (!floor) return;
+  const agents = ws.agents || [];
+  const missions = ws.missions || [];
+
+  // Agents in approval/review sit in the center meeting room.
+  const reviewAgentNames = new Set(
+    missions.filter((m) => m.status === "waiting_approval").map((m) => m.agent).filter(Boolean));
+  const seated = agents.filter((a) => reviewAgentNames.has(a.name)).slice(0, 4);
+  const seatedIds = new Set(seated.map((a) => a.id));
+  const deskAgents = agents.filter((a) => !seatedIds.has(a.id));
+
+  // Group desk agents by lane → cluster offsets around the lane zone.
+  const byLane = {};
+  for (const a of deskAgents) (byLane[a.lane] ||= []).push(a);
+
+  const pods = [];
+  for (const laneId of Object.keys(byLane)) {
+    const z = officeZone(laneId);
+    byLane[laneId].forEach((a, i) => {
+      const off = POD_OFFSETS[i % POD_OFFSETS.length];
+      const ring = 1 + Math.floor(i / POD_OFFSETS.length);
+      const x = clamp(z.x + off[0], 6, 94);
+      const y = clamp(z.y + off[1] + (ring - 1) * 9, 8, 92);
+      pods.push({ y, html: officePod(a, x, y, z) });
+    });
+  }
+  // Render back-to-front (smaller y first) so nearer desks layer on top.
+  const podHtml = pods.sort((p, q) => p.y - q.y).map((p) => p.html);
+
+  // Zone tiles (lane footprints on the floor).
+  const zoneHtml = Object.entries(OFFICE_ZONES).map(([id, z]) => {
+    const lane = (ws.lanes || []).find((l) => l.id === id);
+    const live = lane && lane.status === "running";
+    return `<div class="office-zone${live ? " live" : ""}" style="left:${z.x}%;top:${z.y}%;--zc:${z.color}">
+      <span class="oz-tag"><i>${esc(z.glyph)}</i>${esc(z.label)}${lane ? ` · ${lane.done ?? 0}/${lane.total ?? 0}` : ""}</span>
+    </div>`;
+  }).join("");
+
+  // Center meeting room (seats agents pending approval/review).
+  const seats = seated.map((a, i) => {
+    const ang = (i / Math.max(1, seated.length)) * Math.PI * 2 - Math.PI / 2;
+    const sx = 50 + Math.cos(ang) * 36, sy = 50 + Math.sin(ang) * 34;
+    return `<button class="meet-seat" data-agent="${esc(a.id)}" style="left:${sx}%;top:${sy}%;background:${hueColor(a.id || a.name)}" title="${esc(a.name)} · 검토 중">${esc(initials(a.name))}</button>`;
+  }).join("");
+  const meetingHtml = `
+    <div class="office-meeting" style="left:50%;top:52%">
+      <div class="meet-table"></div>
+      <span class="meet-tag">회의실 · 검토 ${seated.length}</span>
+      ${seats}
+    </div>`;
+
+  // Floating live event bubbles — latest beat per lane (max 4).
+  const seenLane = new Set();
+  const bubbleHtml = (ws.stream || []).filter((b) => {
+    if (!b.lane || seenLane.has(b.lane) || !OFFICE_ZONES[b.lane]) return false;
+    seenLane.add(b.lane); return true;
+  }).slice(0, 4).map((b) => {
+    const z = officeZone(b.lane);
+    return `<div class="office-bubble" data-lvl="${esc(b.level || "info")}" style="left:${clamp(z.x, 12, 88)}%;top:${clamp(z.y - 18, 4, 80)}%">
+      <span class="ob-kind">${esc(b.kind || "event")}</span>
+      <span class="ob-title">${esc(String(b.title).slice(0, 30))}</span>
+    </div>`;
+  }).join("");
+
+  floor.innerHTML = `
+    <div class="floor-grid" aria-hidden="true"></div>
+    ${zoneHtml}
+    ${meetingHtml}
+    ${podHtml.join("")}
+    ${bubbleHtml}`;
+
+  // Pod / seat click → highlight in panel + open the existing detail drawer.
+  floor.querySelectorAll("[data-agent]").forEach((el) =>
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = el.dataset.agent;
+      view.officeAgentId = id;
+      renderOfficePanel(ws);
+      if (perfById(id)) openAgentDetail(id);
+    }));
+}
+
+function officePod(a, x, y, zone) {
+  const st = a.status || "idle";
+  const energy = clamp(a.energy ?? 0, 0, 100);
+  const task = a.activeMission ? esc(String(a.activeMission).slice(0, 26)) : "";
+  const sel = view.officeAgentId === a.id ? " selected" : "";
+  return `
+  <button class="desk-pod st-${esc(st)}${sel}" data-agent="${esc(a.id)}"
+    style="left:${x}%;top:${y}%;--zc:${zone.color}" title="${esc(a.name)} · ${esc(a.laneLabel || "")}"
+    aria-label="${esc(a.name)} 책상 · ${esc(st)}">
+    <span class="pod-shadow" aria-hidden="true"></span>
+    <span class="pod-card">
+      ${task ? `<span class="pod-bubble">${task}</span>` : ""}
+      <span class="pod-av" style="background:${hueColor(a.id || a.name)}">${esc(initials(a.name))}<i class="pod-st st-dot st-${esc(st)}"></i></span>
+      <span class="pod-name">${esc(String(a.name).split(/\s+/)[0])}</span>
+      <span class="pod-energy"><i style="width:${energy}%"></i></span>
+    </span>
+  </button>`;
+}
+
+function renderOfficeLegend(ws) {
+  const el = $("office-legend");
+  if (!el) return;
+  const counts = {};
+  for (const a of ws.agents || []) counts[a.lane] = (counts[a.lane] || 0) + 1;
+  el.innerHTML = Object.entries(OFFICE_ZONES).map(([id, z]) =>
+    `<span class="ol-item"><i style="background:${z.color}"></i>${esc(z.label)} <b>${counts[id] || 0}</b></span>`).join("");
+}
+
+function renderOfficePanel(ws) {
+  const el = $("office-panel");
+  if (!el) return;
+  const agents = ws.agents || [];
+  if (!agents.length) {
+    el.innerHTML = `<div class="op-empty">⟲ 데모 채우기로 회사를 구성하면 오피스에 에이전트가 출근합니다.</div>`;
+    return;
+  }
+  // Default selection: highlighted → a running agent → first agent.
+  let a = agents.find((x) => x.id === view.officeAgentId)
+    || agents.find((x) => x.status === "running") || agents[0];
+  view.officeAgentId = a.id;
+  const p = perfById(a.id);
+  const z = officeZone(a.lane);
+  const energy = clamp(a.energy ?? 0, 0, 100);
+  const trend = p?.trend || "flat";
+  const runBtn = p?.runnableMissionId
+    ? `<button class="op-run" data-run="${esc(p.runnableMissionId)}">▶ 대표 미션 실행</button>`
+    : `<button class="op-run" disabled>실행 가능한 미션 없음</button>`;
+
+  const roster = agents.map((x) => `
+    <button class="op-chip${x.id === a.id ? " on" : ""}" data-agent="${esc(x.id)}" title="${esc(x.name)}">
+      <span class="op-chip-av" style="background:${hueColor(x.id || x.name)}">${esc(initials(x.name))}</span>
+      <span class="op-chip-name">${esc(String(x.name).split(/\s+/)[0])}</span>
+      <i class="st-dot st-${esc(x.status || "idle")}"></i>
+    </button>`).join("");
+
+  el.innerHTML = `
+    <div class="op-head">
+      <span class="op-av" style="background:${hueColor(a.id || a.name)}">${esc(initials(a.name))}</span>
+      <div class="op-id">
+        <div class="op-name">${esc(a.name)}</div>
+        <div class="op-role">${esc(a.role || "")}</div>
+      </div>
+      <span class="op-zone" style="--zc:${z.color}">${esc(z.glyph)} ${esc(a.laneLabel || z.label)}</span>
+    </div>
+    <div class="op-status st-${esc(a.status || "idle")}">
+      <i class="st-dot st-${esc(a.status || "idle")}"></i>${esc(a.focus || a.status || "대기")}
+    </div>
+    ${a.activeMission ? `<div class="op-task"><span>진행 미션</span><b>${esc(a.activeMission)}</b></div>` : ""}
+    <div class="op-meters">
+      <div class="op-meter"><span>에너지</span><div class="meter"><i style="width:${energy}%"></i></div><small>${energy}</small></div>
+      ${p ? `<div class="op-meter"><span>집중도</span><div class="meter teal"><i style="width:${clamp(p.automationRatio ?? 0, 0, 100)}%"></i></div><small>${p.automationRatio ?? 0}</small></div>` : ""}
+    </div>
+    ${p ? `<div class="op-perf">
+      <div class="op-score"><span>성과 점수</span><b>${p.score ?? 0}</b></div>
+      <span class="delta-badge ${trend}">${trendArrow(trend)} ${deltaStr(p.delta, p.deltaPercent)}</span>
+    </div>` : ""}
+    <div class="op-actions">
+      <button class="op-detail" data-detail="${esc(a.id)}">상세 보기 →</button>
+      ${runBtn}
+    </div>
+    <div class="op-roster">${roster}</div>`;
+
+  el.querySelectorAll("[data-agent]").forEach((b) =>
+    b.addEventListener("click", () => { view.officeAgentId = b.dataset.agent; renderOfficePanel(ws); renderOfficeFloor(ws); }));
+  el.querySelectorAll("[data-detail]").forEach((b) =>
+    b.addEventListener("click", () => { if (perfById(b.dataset.detail)) openAgentDetail(b.dataset.detail); }));
+  el.querySelectorAll("[data-run]").forEach((b) => {
+    if (b.disabled) return;
+    b.addEventListener("click", () => runTask(b.dataset.run, b));
+  });
+}
+
+function renderOffice(ws) {
+  if ($("office-asof")) $("office-asof").textContent = `기준 ${fmtTime(ws.market?.asOf || ws.generatedAt)}`;
+  renderOfficeWall(ws);
+  renderOfficeFloor(ws);
+  renderOfficeLegend(ws);
+  renderOfficePanel(ws);
+}
+
 // ── Onboarding overlay (오늘 뭐부터 할까요? → objective cards → start) ──────
 function renderOnboard(ws) {
   const lanes = (ws.lanes || []).filter((l) => (l.total ?? 0) > 0);
@@ -980,6 +1196,7 @@ function renderWorkstream(ws) {
   renderMissions(ws);
   renderAchievements(ws);
   renderFocus(ws);
+  renderOffice(ws);
   if (document.body.classList.contains("onboard-open")) renderOnboard(ws);
 }
 

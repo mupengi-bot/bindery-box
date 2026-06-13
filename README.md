@@ -30,6 +30,12 @@ BINDERY BOX는 고객사 내부에 작은 AI 운영팀을 설치하는 공식 �
 - Latest HTML masterplan: [`docs/bindery-box-development-masterplan.html`](docs/bindery-box-development-masterplan.html)
 - Legacy plan link: [`docs/bindery-box-development-plan.html`](docs/bindery-box-development-plan.html)
 
+## 3D Agent Office (Claw-style)
+
+Mission Control의 **3D 오피스** 레이어(상단 `오피스` / 모바일 하단 네비)는 워크스트림(에이전트·레인·미션·실시간 스트림)을 아이소메트릭 사무실로 투영합니다. 레인별 책상 존, 중앙 회의실(승인·검토 좌석), 파이프라인 백월, 떠다니는 라이브 이벤트 버블, 선택 에이전트 패널로 구성되며, 책상 클릭 시 기존 에이전트 상세 드로어가 열립니다.
+
+현재는 **외부 의존성 없는 native CSS/SVG 아이소메트릭**(perspective grid floor + billboarded pods)으로 구현되어 있고, 다음 단계는 동일한 데이터 투영을 **Claw3D / Three.js 어댑터**로 교체하는 것입니다. 자세한 브리지 설계는 [`docs/office-claw3d-bridge.md`](docs/office-claw3d-bridge.md) 참고.
+
 ## Platform Architecture
 
 The current Alpha is a runnable prototype, not the final platform architecture. Before major feature work, BINDERY BOX is being split into explicit Control Plane, Runtime Plane, Office Plane, Connector Hub, Data Plane, Policy/Governance, and Desktop/Appliance boundaries.
