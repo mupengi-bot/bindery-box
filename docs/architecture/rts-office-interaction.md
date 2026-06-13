@@ -12,6 +12,8 @@ BINDERY BOX uses the Claw3D office as an RTS-like operating board: the camera is
 6. **People expose role prompts** — selecting a person opens a card with role, persona, capabilities, KPI, active mission, and public-safe prompt text.
 7. **People can be created from templates** — the composer exposes role templates, prompt previews, and safe default permissions.
 8. **Commands remain projections** — movement, work requests, and hires go through `Command -> Policy Check -> Runtime Action -> Event(s) -> Persist -> Projection`.
+9. **First win before cockpit complexity** — first-time users see an objective overlay with production/sales/Scope 3 cards before they have to understand logs, connectors, or policies.
+10. **Observable but not noisy** — the default HUD shows next best action and performance board; raw event detail stays in Live Process and sheets.
 
 ## Interaction flow
 

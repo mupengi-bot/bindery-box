@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { OfficeData } from "../useOfficeData";
-import type { LaneId } from "../types";
+import type { LaneId, Mission, Workstream } from "../types";
 import { AgentPanel } from "./AgentPanel";
+import { FirstRunOverlay } from "./FirstRunOverlay";
 import { GoalComposer } from "./GoalComposer";
 import { LiveProcess } from "./LiveProcess";
+import { PerformanceBoard } from "./PerformanceBoard";
 import { Sheets, SHEET_TABS, type SheetId } from "./Sheets";
 import { Ticker } from "./Ticker";
 
-const HUD_Z = { root: 20, top: 30, side: 34, dock: 36, composer: 40, toast: 50, sheet: 70 };
+const HUD_Z = { root: 20, top: 30, side: 34, dock: 36, composer: 40, toast: 50, sheet: 70, firstRun: 90 };
+const FIRST_RUN_KEY = "bindery-box:first-run-dismissed";
 
 export function Hud({
   data,
@@ -26,7 +29,24 @@ export function Hud({
 }) {
   const [sheet, setSheet] = useState<SheetId>(null);
   const [busy, setBusy] = useState(false);
+  const [firstRunOpen, setFirstRunOpen] = useState(false);
   const ws = data.workstream;
+
+  useEffect(() => {
+    setFirstRunOpen(globalThis.localStorage?.getItem(FIRST_RUN_KEY) !== "1");
+  }, []);
+
+  const dismissFirstRun = useCallback(() => {
+    globalThis.localStorage?.setItem(FIRST_RUN_KEY, "1");
+    setFirstRunOpen(false);
+  }, []);
+
+  const resetGuide = useCallback(() => {
+    globalThis.localStorage?.removeItem(FIRST_RUN_KEY);
+    setFirstRunOpen(true);
+  }, []);
+
+  const nextAction = useMemo(() => pickNextAction(ws), [ws]);
 
   const withBusy = useCallback(
     (fn: () => Promise<void>) => async () => {
@@ -69,13 +89,13 @@ export function Hud({
     >
       {/* top stack: brand bar + market ticker */}
       <div style={{ gridArea: "top", zIndex: HUD_Z.top, margin: "0 -12px" }}>
-        <BrandBar data={data} onReseed={reseed} busy={busy} />
+        <BrandBar data={data} onReseed={reseed} onResetGuide={resetGuide} busy={busy} />
         {ws && <Ticker indices={ws.market.indices} performers={ws.agentPerformance} />}
       </div>
 
       {/* left: agent detail when selected */}
       <div style={{ gridArea: "left", alignSelf: "start", paddingTop: 4, zIndex: HUD_Z.side }}>
-        {selectedAgent && (
+        {selectedAgent ? (
           <AgentPanel
             agent={selectedAgent}
             perf={selectedPerf}
@@ -84,12 +104,15 @@ export function Hud({
             onClose={() => onSelect(null)}
             busy={busy}
           />
+        ) : (
+          <NextActionCard action={nextAction} onRun={runMission} onOpenMissions={() => setSheet("missions")} busy={busy} />
         )}
       </div>
 
       {/* right: live ops log */}
       <div style={{ gridArea: "right", alignSelf: "start", justifySelf: "end", paddingTop: 4, zIndex: HUD_Z.side }}>
         <LiveProcess log={data.liveLog} />
+        <PerformanceBoard workstream={ws} />
       </div>
 
       {/* bottom-left: sheet dock */}
@@ -149,11 +172,17 @@ export function Hud({
           busy={busy}
         />
       </div>
+
+      {firstRunOpen && (
+        <div style={{ position: "absolute", inset: 0, zIndex: HUD_Z.firstRun }}>
+          <FirstRunOverlay workstream={ws} onSkip={dismissFirstRun} onRun={runMission} />
+        </div>
+      )}
     </div>
   );
 }
 
-function BrandBar({ data, onReseed, busy }: { data: OfficeData; onReseed: () => void; busy: boolean }) {
+function BrandBar({ data, onReseed, onResetGuide, busy }: { data: OfficeData; onReseed: () => void; onResetGuide: () => void; busy: boolean }) {
   const c = data.workstream?.company;
   const status = data.workstream?.market.status;
   return (
@@ -192,6 +221,9 @@ function BrandBar({ data, onReseed, busy }: { data: OfficeData; onReseed: () => 
             {status.label}
           </span>
         )}
+        <button onClick={onResetGuide} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--bx-border)", background: "rgba(91,140,255,0.08)", color: "var(--bx-text)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+          Guide
+        </button>
         <button onClick={onReseed} disabled={busy} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--bx-border)", background: "rgba(255,255,255,0.04)", color: "var(--bx-muted)", fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: busy ? 0.5 : 1 }}>
           ↻ Reseed
         </button>
@@ -212,3 +244,92 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 function Divider() {
   return <span style={{ width: 1, height: 22, background: "var(--bx-border)" }} />;
 }
+
+interface NextAction {
+  eyebrow: string;
+  title: string;
+  detail: string;
+  mission: Mission | null;
+  tone: "approval" | "run" | "inspect";
+}
+
+function pickNextAction(workstream: Workstream | null): NextAction {
+  if (!workstream) {
+    return {
+      eyebrow: "LOADING",
+      title: "오피스 상태를 불러오는 중",
+      detail: "3D 오피스, 업무 큐, 에이전트 실적을 연결하고 있습니다.",
+      mission: null,
+      tone: "inspect",
+    };
+  }
+
+  const approval = workstream.missions.find((m) => m.requiresApproval || m.status === "waiting_approval") ?? null;
+  if (approval) {
+    return {
+      eyebrow: "HUMAN GATE",
+      title: "승인 필요한 업무가 있습니다",
+      detail: `${approval.agent} · ${approval.title}`,
+      mission: approval,
+      tone: "approval",
+    };
+  }
+
+  const runnable = workstream.missions.find((m) => m.runnable) ?? null;
+  if (runnable) {
+    return {
+      eyebrow: "NEXT BEST ACTION",
+      title: "바로 실행할 수 있는 미션",
+      detail: `${runnable.laneGlyph} ${runnable.title} · ${runnable.agent}`,
+      mission: runnable,
+      tone: "run",
+    };
+  }
+
+  return {
+    eyebrow: "COMMAND HINT",
+    title: "직원을 선택하고 좌표를 찍어 지휘하세요",
+    detail: "좌클릭/우클릭 이동, 스크롤 줌, 구역별 ＋ 업무 요청을 사용할 수 있습니다.",
+    mission: null,
+    tone: "inspect",
+  };
+}
+
+function NextActionCard({ action, onRun, onOpenMissions, busy }: { action: NextAction; onRun: (taskId: string) => void; onOpenMissions: () => void; busy: boolean }) {
+  const accent = action.tone === "approval" ? "var(--bx-warn)" : action.tone === "run" ? "var(--bx-accent-2)" : "var(--bx-accent)";
+  return (
+    <div className="bx-panel" style={{ pointerEvents: "auto", width: 324, padding: 16 }}>
+      <div style={{ fontSize: 10.5, color: accent, fontWeight: 900, letterSpacing: "0.13em" }}>{action.eyebrow}</div>
+      <div style={{ marginTop: 9, fontSize: 20, lineHeight: 1.08, fontWeight: 950, letterSpacing: "-0.03em", color: "var(--bx-text)" }}>{action.title}</div>
+      <div style={{ marginTop: 9, fontSize: 12, lineHeight: 1.5, color: "var(--bx-muted)" }}>{action.detail}</div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
+        {action.mission ? (
+          <button onClick={() => onRun(action.mission?.taskId ?? "")} disabled={busy} style={{ ...nextButton, background: "linear-gradient(135deg,#5b8cff,#21d4a8)", color: "#06121f", opacity: busy ? 0.5 : 1 }}>
+            실행 ▸
+          </button>
+        ) : (
+          <button onClick={onOpenMissions} style={{ ...nextButton, background: "rgba(91,140,255,0.14)", color: "var(--bx-text)" }}>
+            미션 보기
+          </button>
+        )}
+        <button onClick={onOpenMissions} style={{ ...nextButton, background: "rgba(255,255,255,0.045)", color: "var(--bx-muted)", border: "1px solid var(--bx-border)" }}>
+          Control
+        </button>
+      </div>
+
+      <div style={{ marginTop: 13, padding: 10, borderRadius: 12, background: "rgba(8,12,24,0.62)", border: "1px solid rgba(120,150,220,0.12)", color: "var(--bx-muted)", fontSize: 11.2, lineHeight: 1.45 }}>
+        <b style={{ color: "var(--bx-text)" }}>조작:</b> 직원 클릭 → 바닥 좌클릭/우클릭 이동 · 휠 줌 · 업무는 구역 스테이션에서 생성
+      </div>
+    </div>
+  );
+}
+
+const nextButton: React.CSSProperties = {
+  border: "none",
+  borderRadius: 10,
+  padding: "10px 12px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};

@@ -19,6 +19,8 @@ const contracts = await read("packages/contracts/src/index.mjs");
 const runtime = await read("packages/runtime/src/index.mjs");
 const doc = await read("docs/architecture/rts-office-interaction.md");
 const routing = await read("src/features/office/routing.ts");
+const firstRun = await read("src/features/office/hud/FirstRunOverlay.tsx");
+const performance = await read("src/features/office/hud/PerformanceBoard.tsx");
 
 check("fixed RTS camera declared", exp.includes("RTS_CAMERA") && !exp.includes("OrbitControls"));
 check("scroll zoom enabled", exp.includes("MapControls") && exp.includes("enableZoom") && exp.includes("minDistance") && exp.includes("maxDistance"));
@@ -26,6 +28,9 @@ check("right-click movement supported", exp.includes("onContextMenu") && scene.i
 check("selected agent move targets", exp.includes("moveTargets") && scene.includes("MoveTargetMarker"));
 check("agent arrival clamps movement", avatar.includes("ARRIVAL_EPSILON") && avatar.includes("setArrived(true)") && !avatar.includes("dir.current = -1"));
 check("no autonomous status walking", routing.includes("Physical navigation is operator-commanded only") && routing.includes("const waypoints: Vec2[] = [seat]") && doc.includes("No autonomous walking"));
+check("first-run objective overlay", hud.includes("FIRST_RUN_KEY") && hud.includes("FirstRunOverlay") && firstRun.includes("Start simulation") && firstRun.includes("localStorage") === false);
+check("next-best-action card", hud.includes("pickNextAction") && hud.includes("NEXT BEST ACTION") && hud.includes("COMMAND HINT"));
+check("premium performance board", hud.includes("PerformanceBoard") && performance.includes("AGENT PERFORMANCE") && performance.includes("WATCHLIST") && performance.includes("automationRatio"));
 check("HUD layer contract", hud.includes("HUD_Z") && hud.includes("gridTemplateAreas") && hud.includes("composer") && hud.includes("sheet"));
 check("3D HTML stays below HUD", scene.includes("OFFICE_HTML_Z") && avatar.includes("OFFICE_HTML_Z"));
 check("Virtual Office rendering reference adopted", scene.includes("leooooii/Virtual-Office") && scene.includes("BakedContactShadows") && scene.includes("OfficeProps") && scene.includes("Plant") && scene.includes("Shelf"));
