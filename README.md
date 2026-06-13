@@ -37,3 +37,26 @@ This repository starts as the official product planning and architecture home. R
 ## Security Note
 
 Public repository artifacts must contain templates and demo data only. Do not commit real profiles, tokens, sessions, logs, customer files, private memory, or machine-specific runtime paths.
+
+## Alpha Development Slice
+
+BINDERY BOX now includes a first runnable local MVP slice:
+
+- `apps/web` — Mission Control dashboard for agents, tasks, approvals, and audit events.
+- `apps/api` — local HTTP API on port `4311`.
+- `packages/core` — shared product/domain model.
+- `packages/runtime` — demo task execution, approval, and audit lifecycle.
+- `apps/desktop` — desktop launcher preview for the future installable app.
+- `examples/manufacturing-demo` — production, sales, and Scope 3 demo data.
+
+### Quick start
+
+```bash
+npm run check
+npm run seed
+npm run dev:api
+# in another terminal
+npm run dev:web
+```
+
+Open `http://localhost:4310`. The API runs on `http://localhost:4311`.

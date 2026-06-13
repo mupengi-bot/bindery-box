@@ -1,0 +1,1 @@
+{"name":"@bindery-box/desktop","version":"0.1.0-alpha.0","type":"module","description":"Desktop launcher shell for BINDERY BOX local runtime.","scripts":{"dev":"node src/launcher-preview.mjs"},"devDependencies":{"electron":"^33.0.0"}}

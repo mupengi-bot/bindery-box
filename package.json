@@ -1,0 +1,21 @@
+{
+  "name": "bindery-box",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "BINDERY BOX / MUFI Box — AI Company-in-a-Box product runtime, Mission Control, and desktop launcher.",
+  "scripts": {
+    "check": "node scripts/validate.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "node apps/api/server.mjs",
+    "dev:web": "node apps/web/server.mjs",
+    "seed": "node scripts/seed-demo.mjs"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

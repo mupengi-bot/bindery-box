@@ -1,0 +1,1 @@
+{"name":"@bindery-box/api","version":"0.1.0-alpha.0","type":"module","scripts":{"dev":"node server.mjs"},"dependencies":{"@bindery-box/runtime":"workspace:*"}}

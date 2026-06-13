@@ -1,32 +1,10 @@
-# Dependencies
 node_modules/
-.pnp/
-.pnp.js
-
-# Build outputs
-dist/
-build/
-.next/
-out/
-
-# Runtime state
-runtime/
-data/
-logs/
-.cache/
-
-# Secrets
+.DS_Store
 .env
 .env.*
-*.secret
-secrets/
-*.pem
-*.key
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Editor
-.vscode/
-.idea/
+!.env.example
+.bindery/
+runtime/
+dist/
+build/
+*.log
