@@ -49,7 +49,13 @@ const view = {
   perfStatus: "all",     // agent status filter pill
   watchOnly: false,      // "관심만" toggle
   watched: new Set(),    // client-side 관심 set (seeded once from server flags)
-  watchedInit: false
+  watchedInit: false,
+  detailAgentId: null,   // agent whose detail drawer is open (null = closed)
+  pending: new Set(),    // approvalIds with an in-flight optimistic decision
+  // Focus / progressive disclosure front stage.
+  layer: "focus",        // focus | performance | process | organization
+  selectedTaskId: null,  // task currently driving the focus flow
+  selectedLabel: ""      // human label of the selected goal/mission
 };
 function isWatched(id) { return view.watched.has(id); }
 let liveTimer = null;
@@ -108,12 +114,19 @@ function matchesSearch(text) {
   return String(text).toLowerCase().includes(q);
 }
 
-// Build a stock-style SVG chart (area + line + end dot) from a numeric series.
-// The series is scaled between its own min and max — like a price chart — so
-// movement reads clearly instead of being flattened against a zero baseline.
-// Trend coloring (상승 red / 하락 blue) is applied via CSS on the container.
-//   opts.dot  — draw the trailing marker dot (default true)
-//   opts.grid — draw faint horizontal guide lines (default false)
+// Build a stock-style SVG chart (gradient area + line + end dot) from a numeric
+// series. The series is scaled between its own min and max — like a price chart
+// — so movement reads clearly instead of being flattened against a zero
+// baseline. Trend coloring (상승 red / 하락 blue) is applied via CSS classes on
+// the container; the gradient fill picks up `currentColor` so it tints with the
+// trend automatically and no external defs collide.
+//   opts.dot      — draw the trailing marker dot (default true)
+//   opts.dotR     — marker radius
+//   opts.grid     — draw faint horizontal guide lines (default false)
+//   opts.baseline — draw a dashed reference line at the opening value (default false)
+//   opts.area     — fill the area under the line (default true)
+//   opts.label    — print the closing value at the trailing dot (default false)
+let _sparkSeq = 0;
 function sparkSvg(series, w = 100, h = 28, opts = {}) {
   let s = Array.isArray(series) ? series.filter((v) => typeof v === "number" && Number.isFinite(v)) : [];
   if (s.length === 0) s = [0, 0];
@@ -121,25 +134,29 @@ function sparkSvg(series, w = 100, h = 28, opts = {}) {
   const n = s.length;
   const min = Math.min(...s), max = Math.max(...s);
   const span = (max - min) || 1;
-  const padY = 3, usableH = h - padY * 2;
-  const pts = s.map((v, i) => {
-    const x = (i / (n - 1)) * w;
-    const y = padY + (1 - (v - min) / span) * usableH;
-    return [x, y];
-  });
+  const padY = Math.max(3, opts.padY ?? 3), usableH = h - padY * 2;
+  const yOf = (v) => padY + (1 - (v - min) / span) * usableH;
+  const pts = s.map((v, i) => [(i / (n - 1)) * w, yOf(v)]);
   const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
-  const fill = `${line} L ${w.toFixed(1)} ${h} L 0 ${h} Z`;
   const last = pts[pts.length - 1];
+  const gid = `spg${++_sparkSeq}`;
+  const area = opts.area === false ? "" : (() => {
+    const fill = `${line} L ${w.toFixed(1)} ${h} L 0 ${h} Z`;
+    return `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">`
+      + `<stop class="sp-g0" offset="0%"/><stop class="sp-g1" offset="100%"/>`
+      + `</linearGradient></defs><path class="sp-fill" fill="url(#${gid})" d="${fill}"/>`;
+  })();
   const grid = opts.grid
-    ? [0.5].concat([0.25, 0.75]).map((f) => {
-        const gy = (padY + f * usableH).toFixed(1);
-        return `<line class="sp-base" x1="0" y1="${gy}" x2="${w}" y2="${gy}"/>`;
-      }).join("")
+    ? [0.25, 0.5, 0.75].map((f) =>
+        `<line class="sp-base" x1="0" y1="${(padY + f * usableH).toFixed(1)}" x2="${w}" y2="${(padY + f * usableH).toFixed(1)}"/>`).join("")
+    : "";
+  const baseline = opts.baseline
+    ? `<line class="sp-open" x1="0" y1="${yOf(s[0]).toFixed(1)}" x2="${w}" y2="${yOf(s[0]).toFixed(1)}"/>`
     : "";
   const dot = opts.dot === false ? ""
     : `<circle class="sp-dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="${opts.dotR || 2}"/>`;
   return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">`
-    + `${grid}<path class="sp-fill" d="${fill}"/><path class="sp-line" d="${line}"/>${dot}</svg>`;
+    + `${grid}${area}${baseline}<path class="sp-line" d="${line}"/>${dot}</svg>`;
 }
 
 // ── renderers ──────────────────────────────────────────────────────────
@@ -269,7 +286,7 @@ function renderHero(ws) {
       <h2>${esc(h.title)}</h2>
       <p>${esc(h.detail || "")}</p>
     </div>
-    <div class="hero-r hero-spark">${sparkSvg(sparkSeries, 132, 60, { grid: true, dotR: 2.4 })}</div>`;
+    <div class="hero-r hero-spark">${sparkSvg(sparkSeries, 132, 60, { grid: true, baseline: true, dotR: 2.6 })}</div>`;
 }
 
 function renderPipeline(ws) {
@@ -474,8 +491,8 @@ function renderIndices(ws) {
     <div class="idx" data-tr="${esc(trend)}">
       <div class="idx-l">${esc(k.label)}</div>
       <div class="idx-v">${k.value ?? 0}${k.unit ? `<small>${esc(k.unit)}</small>` : ""}</div>
-      <div class="idx-d ${trend}">${trendArrow(trend)} ${deltaStr(k.delta, k.deltaPercent)}</div>
-      <div class="idx-spark">${sparkSvg(k.spark, 96, 28)}</div>
+      <div class="idx-d ${trend}"><span class="delta-badge ${trend}">${trendArrow(trend)} ${deltaStr(k.delta, k.deltaPercent)}</span></div>
+      <div class="idx-spark">${sparkSvg(k.spark, 120, 40, { baseline: true, dotR: 2.2 })}</div>
     </div>`;
   }).join("") : `<div class="list-empty">지수 데이터를 불러오는 중…</div>`;
 }
@@ -516,9 +533,10 @@ function perfRow(p) {
   const run = p.runnableMissionId
     ? `<button class="pb-run" data-run="${esc(p.runnableMissionId)}" title="대표 미션 실행">▶</button>`
     : `<span class="pb-run ghost" aria-hidden="true">–</span>`;
+  const rankCls = p.rank <= 3 ? ` medal rank-${p.rank}` : "";
   return `
-  <div class="pb-row" data-st="${esc(p.status)}">
-    <span class="pb-rank">${p.rank}</span>
+  <div class="pb-row" data-st="${esc(p.status)}" data-detail="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)} 상세 보기">
+    <span class="pb-rank${rankCls}">${p.rank}</span>
     <div class="pb-agent">
       <span class="pb-av" style="background:${hueColor(p.id || p.name)}">${esc(initials(p.name))}</span>
       <span class="pb-id">
@@ -567,10 +585,17 @@ function renderPerfBoard(ws) {
 
 function wireBoard() {
   document.querySelectorAll("#perf-board [data-watch]").forEach((b) =>
-    b.addEventListener("click", () => toggleWatch(b.dataset.watch)));
+    b.addEventListener("click", (e) => { e.stopPropagation(); toggleWatch(b.dataset.watch); }));
   document.querySelectorAll("#perf-board [data-run]").forEach((b) => {
     if (b.disabled) return;
-    b.addEventListener("click", () => runTask(b.dataset.run));
+    b.addEventListener("click", (e) => { e.stopPropagation(); runTask(b.dataset.run, b); });
+  });
+  // Clicking (or Enter/Space on) a ranking row opens the agent detail drawer.
+  document.querySelectorAll("#perf-board .pb-row[data-detail]").forEach((row) => {
+    row.addEventListener("click", () => openAgentDetail(row.dataset.detail));
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openAgentDetail(row.dataset.detail); }
+    });
   });
 }
 
@@ -586,7 +611,7 @@ function renderWatchlist(ws) {
   const list = (ws.agentPerformance || []).filter((p) => isWatched(p.id)).slice(0, 10);
   if ($("watch-sub")) $("watch-sub").textContent = String(list.length);
   $("watchlist").innerHTML = list.length ? list.map((p, i) => `
-    <div class="wl-row">
+    <div class="wl-row" data-detail="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)} 상세 보기">
       <span class="wl-rank">${i + 1}</span>
       <span class="wl-av" style="background:${hueColor(p.id || p.name)}">${esc(initials(p.name))}</span>
       <div class="wl-mid">
@@ -597,7 +622,101 @@ function renderWatchlist(ws) {
       <button class="wl-star on" data-watch="${esc(p.id)}" title="관심 해제">★</button>
     </div>`).join("") : `<div class="list-empty">★ 로 관심 에이전트를 추가하세요.</div>`;
   document.querySelectorAll("#watchlist [data-watch]").forEach((b) =>
-    b.addEventListener("click", () => toggleWatch(b.dataset.watch)));
+    b.addEventListener("click", (e) => { e.stopPropagation(); toggleWatch(b.dataset.watch); }));
+  document.querySelectorAll("#watchlist [data-detail]").forEach((b) =>
+    b.addEventListener("click", () => openAgentDetail(b.dataset.detail)));
+}
+
+// ── Agent detail drawer (ranking row → side panel chart + summary + actions) ─
+function perfById(id) { return (view.ws?.agentPerformance || []).find((p) => p.id === id) || null; }
+function agentById(id) { return (view.ws?.agents || []).find((a) => a.id === id) || null; }
+
+function openAgentDetail(id) {
+  if (!id) return;
+  view.detailAgentId = id;
+  document.body.classList.add("agent-open");
+  const dr = $("agent-drawer");
+  if (dr) dr.setAttribute("aria-hidden", "false");
+  renderAgentDetail();
+}
+function closeAgentDetail() {
+  view.detailAgentId = null;
+  document.body.classList.remove("agent-open");
+  const dr = $("agent-drawer");
+  if (dr) dr.setAttribute("aria-hidden", "true");
+}
+
+function renderAgentDetail() {
+  const el = $("agent-detail");
+  if (!el || !view.detailAgentId) return;
+  const p = perfById(view.detailAgentId);
+  if (!p) { closeAgentDetail(); return; }
+  const a = agentById(p.id) || {};
+  const w = isWatched(p.id);
+  const trend = p.trend || "flat";
+  const energy = clamp(a.energy ?? 0, 0, 100);
+  // Recent narrative beats authored by this agent (front-stage activity feed).
+  const beats = (view.ws?.stream || [])
+    .filter((b) => b.actor === p.name || b.agentName === p.name)
+    .slice(0, 4);
+  const runBtn = p.runnableMissionId
+    ? `<button class="ad-run" data-run="${esc(p.runnableMissionId)}">▶ 대표 미션 실행</button>`
+    : `<button class="ad-run" disabled>실행 가능한 미션 없음</button>`;
+  el.innerHTML = `
+    <header class="ad-head">
+      <button class="ad-close" id="ad-close" aria-label="닫기">✕</button>
+      <div class="ad-id">
+        <span class="ad-av" style="background:${hueColor(p.id || p.name)}">${esc(initials(p.name))}</span>
+        <div class="ad-id-txt">
+          <div class="ad-name">${esc(p.name)} <span class="ad-rank rank-${p.rank <= 3 ? p.rank : "n"}">#${p.rank}</span></div>
+          <div class="ad-role">${esc(p.role || "")}${p.laneLabel ? ` · ${esc(p.laneLabel)}` : ""}</div>
+        </div>
+        <span class="ad-status st-${esc(p.status)}"><i class="st-dot st-${esc(p.status)}"></i>${esc(p.statusLabel || p.status)}</span>
+      </div>
+    </header>
+
+    <div class="ad-ticker">
+      <div class="ad-score"><span class="ad-score-label">성과 점수</span><b class="ticker">${p.score ?? 0}</b></div>
+      <span class="delta-badge lg ${trend}">${trendArrow(trend)} ${deltaStr(p.delta, p.deltaPercent)}</span>
+    </div>
+
+    <div class="ad-chart ${trend}">${sparkSvg(p.spark, 320, 132, { grid: true, baseline: true, dotR: 3, padY: 8 })}</div>
+
+    <div class="ad-split-block">
+      <div class="ad-split-top"><span>자동화 ${p.automationRatio ?? 0}%</span><span>사람 개입 ${p.humanRatio ?? 0}%</span></div>
+      <div class="split-bar lg"><i class="auto" style="width:${clamp(p.automationRatio ?? 0, 0, 100)}%"></i><i class="human" style="width:${clamp(p.humanRatio ?? 0, 0, 100)}%"></i></div>
+    </div>
+
+    <div class="ad-metrics">
+      <div class="ad-metric"><span>처리량</span><b>${p.workload ?? 0}</b></div>
+      <div class="ad-metric"><span>미션 완료</span><b>${p.missionsDone ?? 0}</b></div>
+      <div class="ad-metric"><span>진행 중</span><b>${p.missionsActive ?? 0}</b></div>
+      <div class="ad-metric"><span>에너지</span><b>${energy}</b></div>
+    </div>
+
+    <p class="ad-summary">${esc(p.summary || "")}</p>
+
+    <div class="ad-actions">
+      <button class="ad-star ${w ? "on" : ""}" data-watch="${esc(p.id)}" aria-pressed="${w}">${w ? "★ 관심 등록됨" : "☆ 관심 추가"}</button>
+      ${runBtn}
+    </div>
+
+    ${beats.length ? `<div class="ad-feed">
+      <div class="ad-feed-h">최근 활동</div>
+      ${beats.map((b) => `
+        <div class="ad-beat" data-lvl="${esc(b.level || "info")}">
+          <span class="ad-beat-dot"></span>
+          <div><div class="ad-beat-t">${esc(b.title)}</div><div class="ad-beat-time">${fmtTime(b.ts)}</div></div>
+        </div>`).join("")}
+    </div>` : ""}`;
+
+  on("ad-close", "click", closeAgentDetail);
+  el.querySelectorAll("[data-watch]").forEach((b) =>
+    b.addEventListener("click", () => { toggleWatch(b.dataset.watch); renderAgentDetail(); }));
+  el.querySelectorAll("[data-run]").forEach((b) => {
+    if (b.disabled) return;
+    b.addEventListener("click", () => runTask(b.dataset.run, b));
+  });
 }
 
 // ── Onboarding overlay (오늘 뭐부터 할까요? → objective cards → start) ──────
@@ -616,7 +735,7 @@ function renderOnboard(ws) {
     b.addEventListener("click", () => {
       view.perfCategory = b.dataset.cat;
       renderFilters(view.ws); renderPerfBoard(view.ws);
-      setPanel("stream");
+      setLayer("performance");
       closeOnboard(true);
     }));
 }
@@ -624,6 +743,216 @@ function openOnboard() { document.body.classList.add("onboard-open"); if (view.w
 function closeOnboard(persist) {
   document.body.classList.remove("onboard-open");
   if (persist) { try { localStorage.setItem("bb_onboarded", "1"); } catch { /* ignore */ } }
+}
+
+// ── Focus front stage (progressive disclosure · Claude-simple home) ──────
+// The home view shows only: composer · 3 objective cards · current flow ·
+// a compact status summary. All heavy market/map/log surfaces live behind
+// the layer buttons and are hidden by default.
+
+// Lifecycle steps for a single task, used by the "진행 흐름" tracker.
+function flowSteps(requiresApproval) {
+  return requiresApproval
+    ? [["queued", "접수"], ["running", "실행"], ["waiting_approval", "승인"], ["completed", "완료"]]
+    : [["queued", "접수"], ["running", "실행"], ["completed", "완료"]];
+}
+function missionByTaskId(id) {
+  if (!id) return null;
+  return (view.ws?.missions || []).find((m) => (m.taskId || m.id) === id) || null;
+}
+
+// Pick a runnable mission for a lane (by matching label → agent perf → any).
+function runnableTaskForLane(ws, lane) {
+  const byLabel = (ws.missions || []).find((m) => m.runnable && m.laneLabel === lane.label);
+  if (byLabel) return { taskId: byLabel.taskId || byLabel.id, label: byLabel.title };
+  const perf = (ws.agentPerformance || []).find((p) => p.lane === lane.id && p.runnableMissionId);
+  if (perf) {
+    const mm = missionByTaskId(perf.runnableMissionId);
+    return { taskId: perf.runnableMissionId, label: mm?.title || lane.label };
+  }
+  const any = (ws.missions || []).find((m) => m.runnable);
+  return any ? { taskId: any.taskId || any.id, label: any.title } : null;
+}
+
+// Map free composer text to the nearest existing runnable mission (token score).
+function mapTextToTask(ws, text) {
+  const q = String(text || "").toLowerCase().trim();
+  if (!q) return null;
+  const tokens = q.split(/[^0-9a-z가-힣]+/i).filter((t) => t.length > 1);
+  const missions = ws.missions || [];
+  let best = null, bestScore = 0;
+  for (const m of missions) {
+    const hay = `${m.title} ${m.laneLabel} ${m.agent} ${m.priority} ${m.status}`.toLowerCase();
+    let score = 0;
+    if (hay.includes(q)) score += 5;
+    for (const t of tokens) if (hay.includes(t)) score += 1;
+    if (m.runnable) score += 0.5; // gently prefer something we can actually start
+    if (score > bestScore) { bestScore = score; best = m; }
+  }
+  if (best && bestScore >= 1) return { taskId: best.taskId || best.id, label: best.title, runnable: best.runnable };
+  // No keyword hit — fall back to the first runnable mission so the act still works.
+  const any = missions.find((m) => m.runnable);
+  return any ? { taskId: any.taskId || any.id, label: any.title, runnable: true, fallback: true } : null;
+}
+
+function renderFocusGreeting(ws) {
+  const c = ws.company || {};
+  const st = ws.market?.status || { code: "idle", label: "운영 대기" };
+  const active = c.activeAgents ?? (ws.agents || []).length;
+  if ($("fg-text")) $("fg-text").textContent =
+    `${esc(c.name || "회사")} · ${esc(st.label)} · 가동 에이전트 ${active}`;
+  const dot = document.querySelector(".fg-dot");
+  if (dot) dot.dataset.code = st.code || "idle";
+}
+
+function renderFocusCards(ws) {
+  const el = $("focus-cards");
+  if (!el) return;
+  const lanes = (ws.lanes || []).filter((l) => (l.total ?? 0) > 0).slice(0, 3);
+  if (!lanes.length) {
+    el.innerHTML = `<div class="focus-empty">⟲ 데모 채우기로 회사를 구성하면 목표 카드가 나타납니다.</div>`;
+    return;
+  }
+  el.innerHTML = lanes.map((l) => {
+    const pct = clamp(Math.round(((l.done ?? 0) / Math.max(1, l.total ?? 1)) * 100), 0, 100);
+    const sel = view.selectedLaneId === l.id ? " active" : "";
+    return `
+    <button class="goal-card${sel}" data-lane="${esc(l.id)}">
+      <span class="gc-glyph">${esc(l.glyph || "◈")}</span>
+      <span class="gc-title">${esc(l.label)}</span>
+      <span class="gc-sub">${esc(l.agentName || "—")}</span>
+      <span class="gc-track"><i style="width:${pct}%"></i></span>
+      <span class="gc-foot"><span>${l.done ?? 0}/${l.total ?? 0}</span><span class="gc-go">맡기기 →</span></span>
+    </button>`;
+  }).join("");
+  el.querySelectorAll("[data-lane]").forEach((b) =>
+    b.addEventListener("click", () => selectObjective(b.dataset.lane)));
+}
+
+function renderFocusStatus(ws) {
+  const el = $("focus-status");
+  if (!el) return;
+  const stages = ws.pipeline?.stages || [];
+  const stage = (id) => stages.find((s) => s.id === id)?.count ?? 0;
+  const c = ws.company || {};
+  const items = [
+    { k: "가동 에이전트", v: c.activeAgents ?? (ws.agents || []).length },
+    { k: "진행 중", v: stage("running") },
+    { k: "승인 대기", v: stage("waiting_approval") },
+    { k: "완료", v: stage("completed") },
+    { k: "자동화", v: `${clamp(Math.round(c.automationLevel ?? 0), 0, 100)}%` }
+  ];
+  el.innerHTML = items.map((i) => `
+    <div class="fs-cell"><b>${esc(String(i.v))}</b><span>${esc(i.k)}</span></div>`).join("");
+}
+
+function renderFocusFlow(ws) {
+  const ol = $("focus-flow");
+  if (!ol) return;
+  const m = missionByTaskId(view.selectedTaskId);
+  const sub = $("focus-flow-sub");
+  const title = $("focus-flow-title");
+
+  if (!m) {
+    // No goal selected yet — show the company pipeline as an ambient flow.
+    const stages = ws.pipeline?.stages || [];
+    if (title) title.textContent = "진행 흐름";
+    if (sub) sub.textContent = view.selectedLabel ? esc(view.selectedLabel) : "목표를 고르거나 한 줄로 적어보세요";
+    ol.innerHTML = stages.length ? stages.map((s, i) => `
+      <li class="flow-step${i === 0 ? " active" : ""}">
+        <span class="flow-dot">${s.count ?? 0}</span>
+        <span class="flow-label">${esc(s.label)}</span>
+      </li>`).join("") : `<li class="flow-step active"><span class="flow-dot">·</span><span class="flow-label">대기 중</span></li>`;
+    return;
+  }
+
+  const status = m.status || "queued";
+  const steps = flowSteps(!!m.requiresApproval);
+  const order = steps.map((s) => s[0]);
+  let curIdx = order.indexOf(status);
+  if (status === "completed" || status === "failed") curIdx = order.length - 1;
+  if (curIdx < 0) curIdx = 0;
+  if (title) title.textContent = esc(m.title);
+  if (sub) sub.textContent = status === "completed" ? "완료됨"
+    : status === "failed" ? "실패 · 재실행 가능"
+    : status === "waiting_approval" ? "승인 대기 중"
+    : status === "running" ? "실행 중…" : "대기 중";
+
+  ol.innerHTML = steps.map(([code, label], i) => {
+    const failed = status === "failed" && i === steps.length - 1;
+    const cls = failed ? "fail" : i < curIdx || status === "completed" ? "done" : i === curIdx ? "active" : "todo";
+    const mark = cls === "done" ? "✓" : failed ? "✕" : (i + 1);
+    return `
+      <li class="flow-step ${cls}">
+        <span class="flow-dot">${mark}</span>
+        <span class="flow-label">${esc(label)}</span>
+      </li>`;
+  }).join("");
+
+  if ($("composer-send")) $("composer-send").disabled = false;
+}
+
+function renderFocus(ws) {
+  renderFocusGreeting(ws);
+  renderFocusCards(ws);
+  renderFocusStatus(ws);
+  renderFocusFlow(ws);
+}
+
+// Composer submit → map to nearest mission → run it → drive the flow tracker.
+async function submitComposer() {
+  const inp = $("composer-input");
+  const hint = $("composer-hint");
+  const text = inp ? inp.value : "";
+  if (!text.trim()) { if (inp) inp.focus(); return; }
+  if (!view.ws) return;
+  const hit = mapTextToTask(view.ws, text);
+  if (!hit) {
+    if (hint) hint.textContent = "실행할 수 있는 미션이 없습니다. ⟲ 데모 채우기로 회사를 구성하세요.";
+    return;
+  }
+  view.selectedTaskId = hit.taskId;
+  view.selectedLabel = hit.label;
+  view.selectedLaneId = null;
+  if (hint) hint.textContent = hit.fallback
+    ? `정확히 일치하는 미션이 없어 ‘${hit.label}’ 미션을 시작합니다.`
+    : `‘${hit.label}’ 미션을 시작합니다.`;
+  if (inp) inp.value = "";
+  renderFocus(view.ws);
+  await runTask(hit.taskId);
+}
+
+// Objective card → select lane's representative mission → start its flow.
+async function selectObjective(laneId) {
+  if (!view.ws) return;
+  const lane = (view.ws.lanes || []).find((l) => l.id === laneId);
+  if (!lane) return;
+  view.selectedLaneId = laneId;
+  const pick = runnableTaskForLane(view.ws, lane);
+  const hint = $("composer-hint");
+  if (!pick) {
+    view.selectedTaskId = null;
+    view.selectedLabel = lane.label;
+    if (hint) hint.textContent = `‘${lane.label}’ 라인에 지금 실행할 미션이 없습니다.`;
+    renderFocus(view.ws);
+    return;
+  }
+  view.selectedTaskId = pick.taskId;
+  view.selectedLabel = pick.label;
+  if (hint) hint.textContent = `‘${lane.label}’ 라인의 ‘${pick.label}’ 미션을 시작합니다.`;
+  renderFocus(view.ws);
+  await runTask(pick.taskId);
+}
+
+// ── Layer switching (focus ↔ performance/process/organization) ───────────
+function setLayer(layer) {
+  view.layer = layer;
+  document.body.dataset.layer = layer;
+  document.querySelectorAll("[data-layer-to]").forEach((b) =>
+    b.classList.toggle("active", b.dataset.layerTo === layer));
+  // Closing back to home dismisses any open side drawers.
+  if (layer === "focus") document.body.classList.remove("insp-open", "agent-open");
+  window.scrollTo({ top: 0 });
 }
 
 // Render the whole market + simulator surface from a workstream-shaped object.
@@ -650,6 +979,7 @@ function renderWorkstream(ws) {
   renderAlerts(ws);
   renderMissions(ws);
   renderAchievements(ws);
+  renderFocus(ws);
   if (document.body.classList.contains("onboard-open")) renderOnboard(ws);
 }
 
@@ -799,7 +1129,7 @@ async function runTask(taskId) {
       body: JSON.stringify({ requestedBy: "control-room" })
     });
   } catch { setConn(false, "run failed"); }
-  await loadSurface();
+  await loadSurface();   // re-renders focus flow with the task's new status
   await loadLive(); // log should visibly grow right after the run
 }
 
@@ -858,15 +1188,6 @@ function setAuto(on) {
   startLiveTimer();
 }
 
-// ── responsive drawers + bottom nav ──────────────────────────────────────
-function setPanel(panel) {
-  document.body.dataset.panel = panel;
-  document.querySelectorAll(".bn").forEach((b) => b.classList.toggle("active", b.dataset.nav === panel));
-  // On tablet, "inspector"/"debug" map onto slide-in drawers.
-  if (panel === "inspector") document.body.classList.add("insp-open");
-  if (panel === "debug") document.body.classList.add("debug-open");
-}
-
 // ── wiring ───────────────────────────────────────────────────────────────
 function on(id, evt, fn) { const el = $(id); if (el) el.addEventListener(evt, fn); }
 
@@ -881,8 +1202,17 @@ on("auto-toggle", "click", () => setAuto(!view.autoLive));
 
 on("debug-toggle", "click", () => document.body.classList.toggle("debug-open"));
 on("debug-close", "click", () => document.body.classList.remove("debug-open"));
-on("insp-toggle", "click", () => document.body.classList.toggle("insp-open"));
-on("insp-close", "click", () => document.body.classList.remove("insp-open"));
+on("focus-debug", "click", () => document.body.classList.add("debug-open"));
+
+// Layer switcher (topbar nav · bottom nav · home shortcuts · back buttons).
+document.querySelectorAll("[data-layer-to]").forEach((b) =>
+  b.addEventListener("click", () => setLayer(b.dataset.layerTo)));
+
+// Goal Composer: submit on form / Enter (Shift+Enter = newline).
+on("composer-form", "submit", (e) => { e.preventDefault(); submitComposer(); });
+on("composer-input", "keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitComposer(); }
+});
 
 // Onboarding overlay (progressive disclosure).
 on("guide", "click", () => openOnboard());
@@ -902,9 +1232,6 @@ if (liveFilters) liveFilters.querySelectorAll(".lf").forEach((b) =>
     if (view.live) renderLive(view.live);
   }));
 
-document.querySelectorAll(".bn").forEach((b) =>
-  b.addEventListener("click", () => setPanel(b.dataset.nav)));
-
 on("search", "input", (e) => {
   view.search = e.target.value;
   clearTimeout(searchTimer);
@@ -916,7 +1243,15 @@ document.addEventListener("keydown", (e) => {
     if ($("search")) $("search").focus();
   }
   if (e.key === "Escape") {
-    document.body.classList.remove("debug-open", "insp-open");
+    if (document.body.classList.contains("debug-open") ||
+        document.body.classList.contains("insp-open") ||
+        document.body.classList.contains("agent-open") ||
+        document.body.classList.contains("onboard-open")) {
+      document.body.classList.remove("debug-open", "insp-open", "agent-open", "onboard-open");
+      closeAgentDetail();
+    } else if (view.layer !== "focus") {
+      setLayer("focus");
+    }
   }
 });
 
@@ -926,11 +1261,7 @@ document.addEventListener("visibilitychange", () => {
   else if (view.autoLive) { loadLive(); loadSurface(); startLiveTimer(); }
 });
 
-// boot
-loadAll().then(() => {
-  // First-time visitors get the progressive-disclosure guide.
-  let seen = false;
-  try { seen = !!localStorage.getItem("bb_onboarded"); } catch { seen = false; }
-  if (!seen) openOnboard();
-});
+// boot — the Focus home IS the progressive-disclosure entry, so no overlay.
+setLayer("focus");
+loadAll();
 startLiveTimer();

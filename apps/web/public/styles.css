@@ -770,4 +770,123 @@ body.onboard-open .onboard { display: flex; }
   .pb-row .pb-sum { grid-area: sum; display: -webkit-box; }
 }
 
+/* ============================================================================
+   Focus / Progressive-Disclosure layer system
+   Home = composer + 3 goal cards + flow + status. Heavy market/map/log
+   surfaces hide behind explicit layer buttons (no persistent 3-pane cockpit).
+   ========================================================================== */
+
+/* ── Layer switcher (segmented control in the top bar) ────────────────── */
+.layer-nav { display: flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--raise); border: 1px solid var(--line); flex-shrink: 0; }
+.lyr { height: 28px; padding: 0 14px; border: 0; border-radius: 8px; background: none; font-size: 12.5px; font-weight: 700; color: var(--text-2); transition: .14s; }
+.lyr:hover { color: var(--text); }
+.lyr.active { background: var(--bg-1); color: var(--primary); box-shadow: var(--shadow); }
+.lyr:focus-visible { outline: none; box-shadow: var(--ring); }
+.icon-btn { width: 32px; padding: 0; display: grid; place-items: center; font-size: 14px; }
+
+/* Search only inside backstage layers; market chip only in performance. */
+body[data-layer="focus"] #search-wrap { display: none; }
+body:not([data-layer="performance"]) #market-status,
+body:not([data-layer="performance"]) #market-asof { display: none; }
+
+/* Home shows focus + hides the whole cockpit. */
+.focus { display: none; flex: 1; }
+body[data-layer="focus"] .focus { display: block; }
+body[data-layer="focus"] .cockpit { display: none; }
+
+/* Backstage: cockpit becomes a single centered sheet, one layer at a time. */
+.cockpit { display: block; padding: 0; }
+.layer-panel { display: none; max-width: 1140px; margin: 0 auto; padding: 18px 16px calc(var(--nav-h) + 24px); flex-direction: column; gap: 16px; }
+body[data-layer="performance"] .layer-panel[data-lp="performance"],
+body[data-layer="process"]     .layer-panel[data-lp="process"],
+body[data-layer="organization"] .layer-panel[data-lp="organization"] { display: flex; }
+
+.layer-head { display: flex; align-items: center; gap: 12px; padding: 2px 0 4px; }
+.layer-back { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-1); color: var(--text-2); font-size: 16px; flex-shrink: 0; transition: .14s; }
+.layer-back:hover { border-color: var(--line-2); color: var(--text); transform: translateX(-2px); }
+.layer-back:focus-visible { outline: none; box-shadow: var(--ring); }
+.layer-title h2 { font-size: 18px; }
+.layer-title p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+
+/* Organization layer = responsive 2-col grid of company-map panels. */
+.org-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.org-grid .grow { grid-column: 1 / -1; }
+
+/* ── Focus front stage ────────────────────────────────────────────────── */
+.focus-inner { max-width: 720px; margin: 0 auto; padding: clamp(20px, 6vh, 60px) 18px calc(var(--nav-h) + 28px); display: flex; flex-direction: column; gap: 22px; }
+
+.focus-greeting { display: inline-flex; align-items: center; gap: 8px; align-self: center; font-size: 12.5px; color: var(--text-2); padding: 6px 13px; border-radius: 999px; background: var(--bg-1); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.fg-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.fg-dot[data-code="active"]  { background: var(--green);  box-shadow: 0 0 8px rgba(21,196,126,.7); }
+.fg-dot[data-code="review"]  { background: var(--violet); }
+.fg-dot[data-code="alert"]   { background: var(--red); }
+.fg-dot[data-code="settled"] { background: var(--primary); }
+
+.composer { text-align: center; }
+.composer-q { font-size: clamp(22px, 4vw, 30px); letter-spacing: -.02em; }
+.composer-form { margin-top: 18px; display: flex; align-items: flex-end; gap: 8px; padding: 10px 10px 10px 16px; border-radius: 18px; background: var(--bg-1); border: 1px solid var(--line-2); box-shadow: var(--shadow); transition: border-color .15s, box-shadow .15s; text-align: left; }
+.composer-form:focus-within { border-color: rgba(49,130,246,.55); box-shadow: var(--ring); }
+#composer-input { flex: 1; min-width: 0; border: 0; outline: none; resize: none; background: none; font-family: inherit; font-size: 15px; line-height: 1.5; color: var(--text); max-height: 160px; padding: 6px 0; }
+.composer-send { width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px; border: 0; font-size: 17px; font-weight: 800; color: #fff; background: linear-gradient(150deg, var(--primary), var(--primary-dk)); box-shadow: 0 6px 16px -8px rgba(49,130,246,.8); transition: .14s; }
+.composer-send:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.composer-send:disabled { opacity: .5; cursor: default; transform: none; }
+.composer-hint { margin-top: 10px; font-size: 12px; color: var(--muted); min-height: 16px; }
+
+.focus-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.goal-card { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 15px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--bg-1); box-shadow: var(--shadow); transition: .16s; }
+.goal-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+.goal-card.active { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary), var(--shadow); }
+.gc-glyph { font-size: 20px; color: var(--primary); }
+.gc-title { font-size: 14px; font-weight: 700; }
+.gc-sub { font-size: 11.5px; color: var(--muted); }
+.gc-track { height: 5px; border-radius: 999px; background: rgba(17,24,40,.07); overflow: hidden; margin-top: 2px; }
+.gc-track > i { display: block; height: 100%; background: linear-gradient(90deg, var(--primary-dk), var(--primary)); }
+.gc-foot { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.gc-go { color: var(--primary); font-weight: 700; }
+.focus-empty { grid-column: 1 / -1; padding: 22px; text-align: center; font-size: 12.5px; color: var(--muted); border: 1px dashed var(--line-2); border-radius: var(--radius-sm); }
+
+.focus-flow-card { padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--bg-1); box-shadow: var(--shadow); }
+.focus-sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
+.focus-sec-head h3 { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-sec-sub { font-size: 11.5px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.focus-flow { list-style: none; margin: 0; padding: 0; display: flex; align-items: flex-start; }
+.flow-step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; position: relative; text-align: center; }
+.flow-step::before { content: ""; position: absolute; top: 13px; left: -50%; width: 100%; height: 2px; background: var(--line-2); z-index: 0; }
+.flow-step:first-child::before { display: none; }
+.flow-dot { position: relative; z-index: 1; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; background: var(--raise); color: var(--muted); border: 1px solid var(--line-2); }
+.flow-label { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.flow-step.done .flow-dot { background: var(--green); color: #fff; border-color: transparent; }
+.flow-step.done .flow-label { color: var(--text-2); }
+.flow-step.done::before { background: var(--green); }
+.flow-step.active .flow-dot { background: var(--primary); color: #fff; border-color: transparent; box-shadow: 0 0 0 4px rgba(49,130,246,.18); }
+.flow-step.active .flow-label { color: var(--primary); }
+.flow-step.fail .flow-dot { background: var(--red); color: #fff; border-color: transparent; }
+.flow-step.fail .flow-label { color: var(--red); }
+
+.focus-status { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.fs-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 6px; border-radius: var(--radius-sm); background: var(--bg-1); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.fs-cell b { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.fs-cell span { font-size: 10.5px; color: var(--muted); text-align: center; }
+
+.focus-more { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.focus-more-btn { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 13px 15px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--panel-2); transition: .14s; }
+.focus-more-btn:hover { border-color: var(--line-2); background: var(--bg-1); transform: translateY(-1px); }
+.focus-more-btn b { font-size: 13px; }
+.focus-more-btn span { font-size: 11px; color: var(--muted); }
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+  .layer-nav { display: none; }
+  .topbar-actions { gap: 5px; }
+  #guide, #seed { display: none; }
+  .cockpit { padding: 0; }
+  .focus-inner { padding-top: 26px; gap: 18px; }
+  .focus-cards { grid-template-columns: 1fr; }
+  .focus-status { grid-template-columns: repeat(3, 1fr); }
+  .focus-more { grid-template-columns: 1fr; }
+  .org-grid { grid-template-columns: 1fr; }
+  .flow-label { font-size: 10px; }
+  .flow-dot { width: 24px; height: 24px; font-size: 11px; }
+}
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
