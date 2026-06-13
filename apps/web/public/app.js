@@ -71,7 +71,7 @@ function initials(name) {
 function hueColor(seed) {
   let h = 0;
   for (const ch of String(seed)) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return `hsl(${h} 42% 58%)`;
+  return `hsl(${h} 58% 50%)`;
 }
 function fmtTime(iso) {
   if (!iso) return "--:--:--";
@@ -89,7 +89,7 @@ function deltaStr(d, pct) {
 }
 
 const LANE_STATUS_COLOR = {
-  running: "#6ba6df", success: "#74c489", error: "#e0775c", idle: "rgba(236,224,204,.4)", info: "#8e8470"
+  running: "#3182f6", success: "#15c47e", error: "#f04452", idle: "#c4cdd6", info: "#8b95a1"
 };
 const RUN_LABEL = {
   queued: "▶ 실행", running: "실행 중…", waiting_approval: "승인 대기",
@@ -108,18 +108,38 @@ function matchesSearch(text) {
   return String(text).toLowerCase().includes(q);
 }
 
-// Build an SVG sparkline (line + fill) from a numeric series.
-function sparkSvg(series, w = 100, h = 26) {
-  const s = (series && series.length) ? series : [0, 0];
-  const n = s.length, max = Math.max(...s, 1), pad = 2;
+// Build a stock-style SVG chart (area + line + end dot) from a numeric series.
+// The series is scaled between its own min and max — like a price chart — so
+// movement reads clearly instead of being flattened against a zero baseline.
+// Trend coloring (상승 red / 하락 blue) is applied via CSS on the container.
+//   opts.dot  — draw the trailing marker dot (default true)
+//   opts.grid — draw faint horizontal guide lines (default false)
+function sparkSvg(series, w = 100, h = 28, opts = {}) {
+  let s = Array.isArray(series) ? series.filter((v) => typeof v === "number" && Number.isFinite(v)) : [];
+  if (s.length === 0) s = [0, 0];
+  if (s.length === 1) s = [s[0], s[0]];
+  const n = s.length;
+  const min = Math.min(...s), max = Math.max(...s);
+  const span = (max - min) || 1;
+  const padY = 3, usableH = h - padY * 2;
   const pts = s.map((v, i) => {
-    const x = n === 1 ? w / 2 : (i / (n - 1)) * w;
-    const y = h - pad - (v / max) * (h - pad * 2);
+    const x = (i / (n - 1)) * w;
+    const y = padY + (1 - (v - min) / span) * usableH;
     return [x, y];
   });
   const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
-  const fill = `${line} L ${w} ${h} L 0 ${h} Z`;
-  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path class="sp-fill" d="${fill}"/><path class="sp-line" d="${line}"/></svg>`;
+  const fill = `${line} L ${w.toFixed(1)} ${h} L 0 ${h} Z`;
+  const last = pts[pts.length - 1];
+  const grid = opts.grid
+    ? [0.5].concat([0.25, 0.75]).map((f) => {
+        const gy = (padY + f * usableH).toFixed(1);
+        return `<line class="sp-base" x1="0" y1="${gy}" x2="${w}" y2="${gy}"/>`;
+      }).join("")
+    : "";
+  const dot = opts.dot === false ? ""
+    : `<circle class="sp-dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="${opts.dotR || 2}"/>`;
+  return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">`
+    + `${grid}<path class="sp-fill" d="${fill}"/><path class="sp-line" d="${line}"/>${dot}</svg>`;
 }
 
 // ── renderers ──────────────────────────────────────────────────────────
@@ -128,7 +148,7 @@ function renderVitals(ws) {
   const health = clamp(Math.round(c.healthScore ?? 0), 0, 100);
   const R = 42, C = 2 * Math.PI * R;
   const offset = C * (1 - health / 100);
-  const ringColor = health >= 70 ? "var(--green)" : health >= 40 ? "var(--copper)" : "var(--red)";
+  const ringColor = health >= 70 ? "var(--green)" : health >= 40 ? "var(--amber)" : "var(--red)";
   const delta = c.healthDelta ?? 0;
   const dCls = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
   const automation = clamp(Math.round(c.automationLevel ?? 0), 0, 100);
@@ -249,7 +269,7 @@ function renderHero(ws) {
       <h2>${esc(h.title)}</h2>
       <p>${esc(h.detail || "")}</p>
     </div>
-    <div class="hero-r hero-spark">${sparkSvg(sparkSeries, 116, 56)}</div>`;
+    <div class="hero-r hero-spark">${sparkSvg(sparkSeries, 132, 60, { grid: true, dotR: 2.4 })}</div>`;
 }
 
 function renderPipeline(ws) {
@@ -269,7 +289,7 @@ function renderKpis(ws) {
       <div class="kpi-l">${esc(k.label)}</div>
       <div class="kpi-v">${k.value ?? 0}${k.unit ? `<small>${esc(k.unit)}</small>` : ""}</div>
       <div class="kpi-delta ${trend}">${trendArrow(trend)} ${deltaStr}</div>
-      <div class="spark">${sparkSvg(k.spark)}</div>
+      <div class="spark ${trend}">${sparkSvg(k.spark, 100, 28)}</div>
     </div>`;
   }).join("");
 }
@@ -455,7 +475,7 @@ function renderIndices(ws) {
       <div class="idx-l">${esc(k.label)}</div>
       <div class="idx-v">${k.value ?? 0}${k.unit ? `<small>${esc(k.unit)}</small>` : ""}</div>
       <div class="idx-d ${trend}">${trendArrow(trend)} ${deltaStr(k.delta, k.deltaPercent)}</div>
-      <div class="idx-spark">${sparkSvg(k.spark, 96, 22)}</div>
+      <div class="idx-spark">${sparkSvg(k.spark, 96, 28)}</div>
     </div>`;
   }).join("") : `<div class="list-empty">지수 데이터를 불러오는 중…</div>`;
 }
@@ -506,7 +526,7 @@ function perfRow(p) {
         <small><i class="st-dot st-${esc(p.status)}"></i>${esc(p.statusLabel || p.status)} · ${esc(p.laneLabel || "")}</small>
       </span>
     </div>
-    <div class="pb-score"><b>${p.score ?? 0}</b><span class="pb-spark">${sparkSvg(p.spark, 72, 20)}</span></div>
+    <div class="pb-score"><b>${p.score ?? 0}</b><span class="pb-spark ${esc(p.trend || "flat")}">${sparkSvg(p.spark, 72, 24, { dotR: 1.8 })}</span></div>
     <div class="pb-delta ${esc(p.trend || "flat")}">${trendArrow(p.trend)} ${deltaStr(p.delta, p.deltaPercent)}</div>
     <div class="pb-split" title="자동화 ${p.automationRatio}% · 사람 ${p.humanRatio}%">
       <div class="split-bar"><i class="auto" style="width:${clamp(p.automationRatio ?? 0, 0, 100)}%"></i><i class="human" style="width:${clamp(p.humanRatio ?? 0, 0, 100)}%"></i></div>
