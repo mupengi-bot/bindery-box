@@ -30,9 +30,18 @@ BINDERY BOX는 고객사 내부에 작은 AI 운영팀을 설치하는 공식 �
 - Latest HTML masterplan: [`docs/bindery-box-development-masterplan.html`](docs/bindery-box-development-masterplan.html)
 - Legacy plan link: [`docs/bindery-box-development-plan.html`](docs/bindery-box-development-plan.html)
 
+## Platform Architecture
+
+The current Alpha is a runnable prototype, not the final platform architecture. Before major feature work, BINDERY BOX is being split into explicit Control Plane, Runtime Plane, Office Plane, Connector Hub, Data Plane, Policy/Governance, and Desktop/Appliance boundaries.
+
+- Architecture overview: [`docs/architecture.md`](docs/architecture.md)
+- Platform-first architecture: [`docs/architecture/platform-first-architecture.md`](docs/architecture/platform-first-architecture.md)
+- Canonical domain model: [`docs/architecture/domain-model.md`](docs/architecture/domain-model.md)
+- Runtime commands/events: [`docs/architecture/runtime-events.md`](docs/architecture/runtime-events.md)
+
 ## Repository Status
 
-This repository starts as the official product planning and architecture home. Runtime implementation will be added module by module after the MVP plan is approved.
+This repository is the official product architecture and implementation home. The runnable Alpha slice exists to validate product shape; platform contracts and boundaries take priority before broad feature expansion.
 
 ## Security Note
 

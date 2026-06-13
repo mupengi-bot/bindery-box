@@ -4,6 +4,7 @@ node_modules/
 .env.*
 !.env.example
 .bindery/
+.hermes/
 /runtime/
 dist/
 build/
