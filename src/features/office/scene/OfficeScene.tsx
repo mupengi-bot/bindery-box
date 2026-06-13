@@ -3,10 +3,11 @@
 import { Html } from "@react-three/drei";
 import { useMemo } from "react";
 import * as THREE from "three";
-import type { WorkstreamAgent } from "../types";
+import { deriveRoutes } from "../routing";
+import type { Mission, WorkstreamAgent } from "../types";
 import { AgentAvatar } from "./AgentAvatar";
 import { Desk } from "./Desk";
-import { FLOOR, LANE_ORDER, LANE_ZONES, STATUS_COLOR } from "./sceneConfig";
+import { FLOOR, LANE_ORDER, LANE_ZONES, MEETING_ROOM, STATUS_COLOR } from "./sceneConfig";
 
 interface Placed {
   agent: WorkstreamAgent;
@@ -44,12 +45,17 @@ function layoutAgents(agents: WorkstreamAgent[]): Placed[] {
 
 export interface OfficeSceneProps {
   agents: WorkstreamAgent[];
+  missions: Mission[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }
 
-export function OfficeScene({ agents, selectedId, onSelect }: OfficeSceneProps) {
+export function OfficeScene({ agents, missions, selectedId, onSelect }: OfficeSceneProps) {
   const placed = useMemo(() => layoutAgents(agents), [agents]);
+  const routeByAgent = useMemo(() => {
+    const seats = new Map(placed.map((p) => [p.agent.id, p.seat]));
+    return deriveRoutes(agents, (agentId) => seats.get(agentId) ?? [0, 0], missions);
+  }, [agents, missions, placed]);
 
   return (
     <group>
@@ -118,6 +124,7 @@ export function OfficeScene({ agents, selectedId, onSelect }: OfficeSceneProps) 
 
       {/* central plaza + BINDERY BOX signage */}
       <group>
+        <MeetingRoomShell />
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]} receiveShadow>
           <circleGeometry args={[3.4, 48]} />
           <meshStandardMaterial color="#161d33" roughness={0.85} />
@@ -161,6 +168,7 @@ export function OfficeScene({ agents, selectedId, onSelect }: OfficeSceneProps) 
               status={p.agent.status}
               home={p.seat}
               rally={p.rally}
+              route={routeByAgent.get(p.agent.id)}
               phase={p.phase}
               selected={selectedId === p.agent.id}
               onSelect={onSelect}
@@ -168,6 +176,44 @@ export function OfficeScene({ agents, selectedId, onSelect }: OfficeSceneProps) 
           </group>
         );
       })}
+    </group>
+  );
+}
+
+function MeetingRoomShell() {
+  const [w, d] = [MEETING_ROOM.half[0] * 2, MEETING_ROOM.half[1] * 2];
+  const wallColor = "#a8c7ff";
+  return (
+    <group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]} receiveShadow>
+        <boxGeometry args={[w, d, 0.05]} />
+        <meshStandardMaterial color="#111936" roughness={0.8} transparent opacity={0.72} />
+      </mesh>
+      <mesh position={[0, 0.35, MEETING_ROOM.half[1]]}>
+        <boxGeometry args={[w, 0.7, 0.06]} />
+        <meshStandardMaterial color={wallColor} transparent opacity={0.16} roughness={0.25} />
+      </mesh>
+      <mesh position={[0, 0.35, -MEETING_ROOM.half[1]]}>
+        <boxGeometry args={[w, 0.7, 0.06]} />
+        <meshStandardMaterial color={wallColor} transparent opacity={0.16} roughness={0.25} />
+      </mesh>
+      <mesh position={[MEETING_ROOM.half[0], 0.35, 0]}>
+        <boxGeometry args={[0.06, 0.7, d]} />
+        <meshStandardMaterial color={wallColor} transparent opacity={0.16} roughness={0.25} />
+      </mesh>
+      <mesh position={[-MEETING_ROOM.half[0], 0.35, 0]}>
+        <boxGeometry args={[0.06, 0.7, d]} />
+        <meshStandardMaterial color={wallColor} transparent opacity={0.16} roughness={0.25} />
+      </mesh>
+      <mesh position={[0, 0.42, 0]} castShadow receiveShadow>
+        <boxGeometry args={[3.2, 0.18, 1.5]} />
+        <meshStandardMaterial color="#18223e" emissive="#263a77" emissiveIntensity={0.18} roughness={0.55} />
+      </mesh>
+      <Html position={[0, 1.15, 2.8]} center distanceFactor={14} pointerEvents="none">
+        <div className="bx-chip" style={{ background: "rgba(9,14,29,0.86)", color: "#dbe7ff", borderColor: "rgba(168,199,255,0.32)" }}>
+          승인 회의실 · Human Gate
+        </div>
+      </Html>
     </group>
   );
 }

@@ -12,6 +12,7 @@ export default function OfficeExperience() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const agents = useMemo(() => data.workstream?.agents ?? [], [data.workstream]);
+  const missions = useMemo(() => data.workstream?.missions ?? [], [data.workstream]);
 
   return (
     <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
@@ -25,6 +26,7 @@ export default function OfficeExperience() {
         <fog attach="fog" args={["#070b16", 34, 70]} />
         <OfficeScene
           agents={agents}
+          missions={missions}
           selectedId={selectedId}
           onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))}
         />

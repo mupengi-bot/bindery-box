@@ -1,36 +1,55 @@
-# 3D Agent Office — Claw3D / Three.js Bridge
+# 3D Agent Office — Claw3D Core Bridge
 
-Mission Control의 `3D 오피스` 레이어는 워크스트림 데이터를 공간(office scene)으로 투영합니다. 지금은 외부 의존성 없이 **native CSS/SVG 아이소메트릭**으로 빠르게 구현했고, 이후 동일한 투영 계약을 유지한 채 렌더러만 **Claw3D / Three.js 어댑터**로 교체할 수 있도록 설계했습니다.
+BINDERY BOX / MUFI Box의 메인 경험은 이제 2D Mission Control이 아니라 **Claw3D-style 3D AI company office**입니다. 사용자는 3D 사무실을 먼저 보고, 목표 입력·승인·성과·로그는 HUD와 secondary sheet로 단계적으로 펼칩니다.
 
-## 지금 (Stage 1 · native isometric)
+## Current stage — Next.js + React Three Fiber office core
 
-- 순수 CSS perspective grid floor + billboarded desk pods (WebGL 없음).
-- 진입점: `apps/web/public/index.html`의 `data-lp="office"` 섹션.
-- 렌더러: `apps/web/public/app.js`의 `renderOffice(ws)` 및 하위 함수
-  (`renderOfficeWall`, `renderOfficeFloor`, `renderOfficeLegend`, `renderOfficePanel`).
-- 스타일: `apps/web/public/styles.css`의 `3D Office` 블록 (`--tilt` 변수로 기울기 제어).
+- 진입점: `src/app/page.tsx` → `src/features/office/OfficeExperience.tsx`
+- 렌더러: `@react-three/fiber`, `three`, `@react-three/drei`
+- 3D scene: `src/features/office/scene/OfficeScene.tsx`
+- procedural agent avatars: `src/features/office/scene/AgentAvatar.tsx`
+- office geometry / rooms: `src/features/office/scene/sceneConfig.ts`
+- route projection: `src/features/office/routing.ts`
+- HUD / Mission Control sheets: `src/features/office/hud/*`
+- control-plane API: `src/server/controlPlane.mjs`, `src/app/api/[...path]/route.ts`
 
-## 투영 계약 (renderer-agnostic)
+## Projection contract
 
-`renderOffice(ws)`가 소비하는 워크스트림 필드 — 어떤 렌더러든 이 입력만 매핑하면 됩니다.
+3D scene and Mission Control overlays consume the same workstream projection. This is the important invariant: **business state is not duplicated in the renderer**.
 
-| 개념 | 소스 필드 | 공간 매핑 |
+| Concept | Source field | Spatial mapping |
 | --- | --- | --- |
-| 에이전트 위치 | `ws.agents[].lane` | 레인 → 사무실 존 좌표 (`OFFICE_ZONES`) |
-| 상태/에너지/포커스 | `agents[].status / energy / focus / activeMission` | 책상 pod 글로우·에너지 바·말풍선 |
-| 회의실 좌석 | `ws.missions[]` 중 `status==="waiting_approval"` | 중앙 회의 테이블 좌석 |
-| 파이프라인 월 | `ws.pipeline.stages[]` | 백월 패널 카운트 |
-| 라이브 이벤트 버블 | `ws.stream[]` (레인별 최신) | 존 위에 떠다니는 버블 |
-| 레인 색상 | lane id | `OFFICE_ZONES[*].color` |
-| 선택/상세 | pod click → `openAgentDetail(id)` | 기존 에이전트 드로어 재사용 |
+| Department room | `agents[].lane` | `LANE_ZONES` / `ROOMS` quadrants |
+| Workstation | agent roster per lane | deterministic desk + seat layout |
+| Agent status | `agents[].status` | avatar accent, halo, movement speed |
+| Active mission | `missions[].agentId`, `status`, `requiresApproval` | route destination |
+| Running work | agent running + active task | in-room huddle route |
+| Human approval | mission waiting approval / requires approval | central meeting room seat |
+| Backstage trace | `/live-log` | HUD live process drawer |
+| Mission Control | `/workstream`, connectors, knowledge, approvals | secondary sheets, not primary surface |
 
-좌표·색상 테이블(`OFFICE_ZONES`, `POD_OFFSETS`)은 `app.js` 상단에 분리되어 있어 3D 좌표계로 그대로 이식할 수 있습니다.
+## Routing semantics
 
-## 다음 (Stage 2 · Claw3D / Three.js adapter)
+`src/features/office/routing.ts` turns workstream state into an agent route:
 
-1. `renderOfficeFloor`를 `OfficeRenderer` 인터페이스 뒤로 추상화: `mount(el)`, `update(projection)`, `onSelect(cb)`, `dispose()`.
-2. CSS 구현을 `CssIsometricRenderer`로, 신규 구현을 `Claw3DRenderer`(Three.js scene/camera/glTF desks)로 둠.
-3. 위 투영 계약을 Stage 1과 동일하게 유지 → 데이터/이벤트 코드 변경 없이 렌더러만 스왑.
-4. 선택·실행·승인 이벤트는 계속 기존 `openAgentDetail` / `runTask` / approval 경로로 위임.
+1. `desk` — idle, blocked, disabled, or no active mission.
+2. `huddle` — active running work inside the department room.
+3. `meeting` — mission requires human approval; agent walks via room huddle → room door → meeting table seat.
 
-> 외부 라이브러리(Three.js 등)는 Stage 2에서만 도입합니다. Stage 1은 의존성 0으로 제품에 바로 붙는 것을 목표로 합니다.
+Routes are renderer-agnostic XZ polylines. The avatar animation samples the polyline by distance, so replacing the procedural scene with imported Claw3D rooms later does not change business logic.
+
+## Upstream attribution
+
+This repository uses `iamlukethedev/Claw3D` as product and architecture inspiration for a 3D virtual office where AI agents are visible as staff members. Imported implementation should preserve upstream MIT attribution and must not copy `.git`, secrets, private profiles, or environment files.
+
+Current implementation is a clean BINDERY BOX layer built with the same public stack family:
+
+- Next.js
+- React
+- Three.js
+- React Three Fiber
+- Drei
+
+## Product rule
+
+The 3D office is the **frontstage**. Mission Control, logs, connectors, approvals, and knowledge graph are **backstage / secondary layers**. Do not regress to a 2D dashboard-first product unless explicitly approved.

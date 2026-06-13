@@ -4,6 +4,7 @@ import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { sampleRoute, type AgentRoute } from "../routing";
 import type { AgentStatus } from "../types";
 import { STATUS_COLOR, STATUS_RING } from "./sceneConfig";
 
@@ -16,6 +17,8 @@ export interface AgentAvatarProps {
   home: [number, number];
   /** Rally point [x, z] running agents walk toward. */
   rally: [number, number];
+  /** Renderer-agnostic route derived from the workstream projection. */
+  route?: AgentRoute;
   /** Deterministic phase offset so avatars don't move in lockstep. */
   phase: number;
   selected: boolean;
@@ -35,6 +38,7 @@ export function AgentAvatar({
   status,
   home,
   rally,
+  route,
   phase,
   selected,
   onSelect,
@@ -54,6 +58,7 @@ export function AgentAvatar({
 
   const homeVec = useMemo(() => new THREE.Vector3(home[0], 0, home[1]), [home]);
   const rallyVec = useMemo(() => new THREE.Vector3(rally[0], 0, rally[1]), [rally]);
+  const routePoints = route?.waypoints;
 
   const color = STATUS_COLOR[status];
   const ringColor = STATUS_RING[status];
@@ -66,7 +71,18 @@ export function AgentAvatar({
     const time = state.clock.elapsedTime + phase;
 
     // --- locomotion target ---
-    if (moving) {
+    if (routePoints && routePoints.length > 1) {
+      t.current += dir.current * delta * 0.22;
+      if (t.current >= 1) {
+        t.current = 1;
+        dir.current = -1;
+      } else if (t.current <= 0) {
+        t.current = 0;
+        dir.current = 1;
+      }
+      const [x, z] = sampleRoute(routePoints, easeInOut(t.current));
+      tmp.set(x, 0, z);
+    } else if (moving) {
       t.current += dir.current * delta * 0.32;
       if (t.current >= 1) {
         t.current = 1;
@@ -207,6 +223,7 @@ export function AgentAvatar({
         >
           <div>{firstName}</div>
           <div style={{ fontSize: 9, fontWeight: 500, color: "#9fb0d8", marginTop: 1 }}>{role}</div>
+          {route?.note && <div style={{ fontSize: 8.5, fontWeight: 800, color: "#cbd8ff", marginTop: 2 }}>{route.note}</div>}
         </div>
       </Html>
     </group>
