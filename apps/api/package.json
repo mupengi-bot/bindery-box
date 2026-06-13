@@ -1,1 +1,13 @@
-{"name":"@bindery-box/api","version":"0.1.0-alpha.0","type":"module","scripts":{"dev":"node server.mjs"},"dependencies":{"@bindery-box/runtime":"workspace:*"}}
+{
+  "name": "@bindery-box/api",
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "scripts": { "dev": "node server.mjs" },
+  "dependencies": {
+    "@bindery-box/runtime": "workspace:*",
+    "@bindery-box/data-store": "workspace:*",
+    "@bindery-box/office-mattermost": "workspace:*",
+    "@bindery-box/connectors": "workspace:*",
+    "@bindery-box/knowledge": "workspace:*"
+  }
+}

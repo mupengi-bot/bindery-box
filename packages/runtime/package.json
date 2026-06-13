@@ -1,1 +1,12 @@
-{"name":"@bindery-box/runtime","version":"0.1.0-alpha.0","type":"module","main":"src/index.mjs","exports":"./src/index.mjs","dependencies":{"@bindery-box/core":"workspace:*"}}
+{
+  "name": "@bindery-box/runtime",
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "main": "src/index.mjs",
+  "exports": "./src/index.mjs",
+  "dependencies": {
+    "@bindery-box/domain": "workspace:*",
+    "@bindery-box/contracts": "workspace:*",
+    "@bindery-box/policy": "workspace:*"
+  }
+}
