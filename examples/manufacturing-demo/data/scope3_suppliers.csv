@@ -1,4 +1,0 @@
-supplier,emission_factor,electricity_kwh,status
-Alpha Steel,,12000,missing_factor
-Beta Paint,0.42,,missing_activity
-Gamma Pack,,,missing_all

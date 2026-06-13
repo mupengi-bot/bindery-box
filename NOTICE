@@ -1,0 +1,35 @@
+BINDERY BOX / MUFI Box
+======================
+
+This product reconstructs its front-end core on top of Claw3D, an open-source
+3D virtual AI-office built with Next.js, React, Three.js and React Three Fiber.
+
+  Claw3D
+  https://github.com/iamlukethedev/Claw3D
+  Copyright (c) 2026 Luke The Dev
+  Licensed under the MIT License.
+
+What is derived from Claw3D
+---------------------------
+  * The application stack and structure: Next.js (App Router) + React 19 +
+    Three.js + @react-three/fiber + @react-three/drei + Tailwind, and the
+    security-header configuration in next.config.ts.
+  * The "living 3D virtual office" concept: a navigable office rendered with
+    React Three Fiber, populated by procedurally-modelled agent employees
+    (capsule body, head, swinging limbs, status halo, floating nameplate) that
+    move between desks and a central plaza.
+
+What is original to BINDERY BOX
+-------------------------------
+  * The business core (packages/): domain, contracts, runtime, data-store,
+    policy, connectors, knowledge graph and the Mattermost-mock office adapter,
+    together with the Control Plane API (health, workstream, live-log,
+    connectors, knowledge search, task run / approval flows).
+  * The product framing as an "AI Company-in-a-Box": Mission Control, the Agent
+    Performance Market, the Goal Composer, the live operations log overlay and
+    the lane-based company simulation.
+
+No secrets, credentials, external-account configuration, or private gateway
+integrations from any upstream source were copied into this repository.
+
+The Three.js library is Copyright (c) 2010-2026 three.js authors (MIT License).

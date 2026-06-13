@@ -1,14 +1,29 @@
+# dependencies
 node_modules/
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+dist/
+
+# misc
 .DS_Store
+*.pem
+*.tsbuildinfo
+*.log
+
+# env
 .env
 .env.*
 !.env.example
+
+# deploy / local agent state
+.vercel/
 .bindery/
 .hermes/
 .omc/
 /runtime/
-/public/
-.vercel/
-dist/
-build/
-*.log
