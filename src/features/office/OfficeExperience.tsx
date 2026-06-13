@@ -1,5 +1,6 @@
 "use client";
 
+import { MapControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { useMemo, useState } from "react";
 import { Hud } from "./hud/Hud";
@@ -10,6 +11,7 @@ import { useOfficeData } from "./useOfficeData";
 // Fixed RTS camera: the office is a board. Users select a unit/agent and click
 // the floor to issue a movement intent; camera control is not the primary UX.
 const RTS_CAMERA = { position: [18, 18, 18] as [number, number, number], fov: 38 };
+const CAMERA_TARGET = [0, 0, 0] as [number, number, number];
 
 export default function OfficeExperience() {
   const data = useOfficeData();
@@ -49,15 +51,28 @@ export default function OfficeExperience() {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
+    <div onContextMenu={(e) => e.preventDefault()} style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
       <Canvas
-        shadows
-        dpr={[1, 2]}
+        dpr={[1, 1.25]}
         camera={RTS_CAMERA}
-        gl={{ antialias: true, powerPreference: "high-performance" }}
+        performance={{ min: 0.55 }}
+        gl={{ antialias: true, alpha: false, stencil: false, depth: true, powerPreference: "high-performance" }}
+        style={{ background: "#070b16" }}
       >
         <color attach="background" args={["#070b16"]} />
         <fog attach="fog" args={["#070b16", 36, 74]} />
+        <MapControls
+          makeDefault
+          target={CAMERA_TARGET}
+          enableRotate={false}
+          enablePan
+          enableZoom
+          zoomSpeed={0.85}
+          panSpeed={0.75}
+          minDistance={10}
+          maxDistance={38}
+          dampingFactor={0.08}
+        />
         <OfficeScene
           agents={agents}
           missions={missions}

@@ -9,6 +9,8 @@ import { LiveProcess } from "./LiveProcess";
 import { Sheets, SHEET_TABS, type SheetId } from "./Sheets";
 import { Ticker } from "./Ticker";
 
+const HUD_Z = { root: 20, top: 30, side: 34, dock: 36, composer: 40, toast: 50, sheet: 70 };
+
 export function Hud({
   data,
   selectedId,
@@ -50,16 +52,30 @@ export function Hud({
   const pendingApprovals = (ws?.alerts ?? []).filter((a) => a.kind === "approval").length;
 
   return (
-    <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10 }}>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: HUD_Z.root,
+        display: "grid",
+        gridTemplateRows: "auto minmax(0, 1fr) auto",
+        gridTemplateColumns: "minmax(260px, 360px) minmax(320px, 1fr) minmax(280px, 380px)",
+        gridTemplateAreas: `"top top top" "left stage right" "dock composer toast"`,
+        gap: 12,
+        padding: "0 12px 18px",
+        boxSizing: "border-box",
+      }}
+    >
       {/* top stack: brand bar + market ticker */}
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0 }}>
+      <div style={{ gridArea: "top", zIndex: HUD_Z.top, margin: "0 -12px" }}>
         <BrandBar data={data} onReseed={reseed} busy={busy} />
         {ws && <Ticker indices={ws.market.indices} performers={ws.agentPerformance} />}
       </div>
 
       {/* left: agent detail when selected */}
-      {selectedAgent && (
-        <div style={{ position: "absolute", top: 118, left: 12 }}>
+      <div style={{ gridArea: "left", alignSelf: "start", paddingTop: 4, zIndex: HUD_Z.side }}>
+        {selectedAgent && (
           <AgentPanel
             agent={selectedAgent}
             perf={selectedPerf}
@@ -68,16 +84,16 @@ export function Hud({
             onClose={() => onSelect(null)}
             busy={busy}
           />
-        </div>
-      )}
+        )}
+      </div>
 
       {/* right: live ops log */}
-      <div style={{ position: "absolute", top: 118, right: 12 }}>
+      <div style={{ gridArea: "right", alignSelf: "start", justifySelf: "end", paddingTop: 4, zIndex: HUD_Z.side }}>
         <LiveProcess log={data.liveLog} />
       </div>
 
       {/* bottom-left: sheet dock */}
-      <div style={{ position: "absolute", bottom: 18, left: 12, display: "flex", flexDirection: "column", gap: 8, pointerEvents: "auto" }}>
+      <div style={{ gridArea: "dock", alignSelf: "end", justifySelf: "start", display: "flex", flexDirection: "column", gap: 8, pointerEvents: "auto", zIndex: HUD_Z.dock }}>
         {SHEET_TABS.map((t) => (
           <button
             key={t.id}
@@ -108,29 +124,31 @@ export function Hud({
       </div>
 
       {/* bottom-center: goal composer */}
-      <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, padding: "0 200px" }}>
+      <div style={{ gridArea: "composer", alignSelf: "end", justifySelf: "center", width: "100%", zIndex: HUD_Z.composer }}>
         <GoalComposer missions={ws?.missions ?? []} agents={ws?.agents ?? []} roleTemplates={data.roleTemplates} initialLane={composerLane} openNonce={composerOpenNonce} onRun={runMission} onCreateTask={data.createTask} onCreateAgent={data.createAgent} onReseed={reseed} busy={busy} />
       </div>
 
       {/* error toast */}
       {data.error && (
-        <div style={{ position: "absolute", bottom: 18, right: 12, pointerEvents: "auto" }} className="bx-panel">
+        <div style={{ gridArea: "toast", alignSelf: "end", justifySelf: "end", pointerEvents: "auto", zIndex: HUD_Z.toast }} className="bx-panel">
           <div style={{ padding: "10px 14px", fontSize: 11.5, color: "#ff5d73" }}>API: {data.error}</div>
         </div>
       )}
 
       {/* secondary sheets */}
-      <Sheets
-        sheet={sheet}
-        onClose={() => setSheet(null)}
-        workstream={ws}
-        connectors={data.connectors}
-        goldenImage={data.goldenImage}
-        onRun={runMission}
-        onDecide={decide}
-        searchKnowledge={data.searchKnowledge}
-        busy={busy}
-      />
+      <div style={{ position: "absolute", inset: 0, zIndex: HUD_Z.sheet, pointerEvents: "none" }}>
+        <Sheets
+          sheet={sheet}
+          onClose={() => setSheet(null)}
+          workstream={ws}
+          connectors={data.connectors}
+          goldenImage={data.goldenImage}
+          onRun={runMission}
+          onDecide={decide}
+          searchKnowledge={data.searchKnowledge}
+          busy={busy}
+        />
+      </div>
     </div>
   );
 }

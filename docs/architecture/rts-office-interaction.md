@@ -19,7 +19,7 @@ BINDERY BOX uses the Claw3D office as an RTS-like operating board: the camera is
 ```txt
 click agent
   -> selectedAgentId
-click floor/zone coordinate
+click floor/zone coordinate with left click or right click
   -> optimistic local marker
   -> POST /api/agents/:id/move
   -> command: agent.move.requested

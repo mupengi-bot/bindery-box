@@ -10,6 +10,12 @@ import { Desk } from "./Desk";
 import { FLOOR, LANE_ORDER, LANE_ZONES, MEETING_ROOM, STATUS_COLOR, type Vec2 } from "./sceneConfig";
 
 
+// Rendering reference: leooooii/Virtual-Office (Three.js office with desk
+// accessories, plants, layered props and soft visual grounding). We adapt the
+// rendering language procedurally with baked shadows so the RTS office stays
+// lightweight and avoids WebGL context loss on constrained browsers.
+const OFFICE_HTML_Z: [number, number] = [4, 0];
+
 export interface MoveTarget {
   x: number;
   z: number;
@@ -75,26 +81,28 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
 
   return (
     <group>
-      {/* lighting */}
-      <ambientLight intensity={0.62} />
-      <hemisphereLight args={["#cfe0ff", "#1a1f30", 0.5]} />
+      {/* lighting: optimized baked/procedural setup, no heavy realtime environment maps. */}
+      <ambientLight intensity={0.72} />
+      <hemisphereLight args={["#dce8ff", "#151b2e", 0.52]} />
       <directionalLight
         position={[12, 18, 10]}
-        intensity={1.05}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-left={-26}
-        shadow-camera-right={26}
-        shadow-camera-top={26}
-        shadow-camera-bottom={-26}
+        intensity={1.18}
       />
 
+      <BakedContactShadows />
+
       {/* floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow onClick={(e) => { e.stopPropagation(); issueMove(e.point); }}>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0, 0]}
+        receiveShadow
+        onClick={(e) => { e.stopPropagation(); issueMove(e.point); }}
+        onContextMenu={(e) => { e.stopPropagation(); issueMove(e.point); }}
+      >
         <planeGeometry args={[FLOOR.width, FLOOR.depth]} />
-        <meshStandardMaterial color="#0e1424" roughness={0.96} metalness={0.04} />
+        <meshStandardMaterial color="#0d1425" roughness={0.88} metalness={0.08} />
       </mesh>
+      <FloorGrid />
 
       {/* lane zones: rug + sign + key light */}
       {LANE_ORDER.map((laneId) => {
@@ -111,9 +119,9 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
               <ringGeometry args={[zone.half[1] * 0.97, zone.half[1], 4, 1]} />
               <meshBasicMaterial color={zone.color} transparent opacity={0.0} />
             </mesh>
-            <pointLight position={[cx, 4.2, cz]} intensity={0.34} color={zone.color} distance={14} />
+            <pointLight position={[cx, 4.2, cz]} intensity={0.42} color={zone.color} distance={14} />
             {/* floating lane sign */}
-            <Html position={[cx, 3.1, cz]} center distanceFactor={16} pointerEvents="none">
+            <Html position={[cx, 3.1, cz]} center distanceFactor={16} zIndexRange={OFFICE_HTML_Z} pointerEvents="none">
               <div
                 style={{
                   whiteSpace: "nowrap",
@@ -136,6 +144,10 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
         );
       })}
 
+      {/* richer procedural office shell + props */}
+      <OfficeProps />
+      <CeilingLights />
+
       {/* perimeter low walls */}
       <PerimeterWalls />
 
@@ -155,7 +167,7 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
           <boxGeometry args={[3.6, 1.2, 0.16]} />
           <meshStandardMaterial color="#0c1226" emissive="#1b2750" emissiveIntensity={0.5} roughness={0.4} />
         </mesh>
-        <Html position={[0, 2.2, -0.3]} center distanceFactor={13} pointerEvents="none">
+        <Html position={[0, 2.2, -0.3]} center distanceFactor={13} zIndexRange={OFFICE_HTML_Z} pointerEvents="none">
           <div style={{ textAlign: "center", whiteSpace: "nowrap" }}>
             <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.16em", color: "#eaf0ff", textShadow: "0 2px 14px rgba(91,140,255,0.7)" }}>
               BINDERY BOX
@@ -206,6 +218,106 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
   );
 }
 
+function BakedContactShadows() {
+  return (
+    <group>
+      {[[0, 0, 12, 8, 0.18], [-8, -5, 6, 3.2, 0.12], [8, 5, 6, 3.2, 0.12], [0, 0, 4, 4, 0.16]].map(([x, z, sx, sz, opacity], i) => (
+        <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.021 + i * 0.001, z]} scale={[sx, sz, 1]}>
+          <circleGeometry args={[1, 48]} />
+          <meshBasicMaterial color="#020611" transparent opacity={opacity} depthWrite={false} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function FloorGrid() {
+  const lines = [];
+  const step = 2;
+  for (let x = -FLOOR.width / 2 + step; x < FLOOR.width / 2; x += step) {
+    lines.push(<mesh key={`x-${x}`} position={[x, 0.028, 0]}><boxGeometry args={[0.018, 0.01, FLOOR.depth]} /><meshBasicMaterial color="#26304e" transparent opacity={0.28} /></mesh>);
+  }
+  for (let z = -FLOOR.depth / 2 + step; z < FLOOR.depth / 2; z += step) {
+    lines.push(<mesh key={`z-${z}`} position={[0, 0.029, z]}><boxGeometry args={[FLOOR.width, 0.01, 0.018]} /><meshBasicMaterial color="#26304e" transparent opacity={0.28} /></mesh>);
+  }
+  return <group>{lines}</group>;
+}
+
+function CeilingLights() {
+  return (
+    <group>
+      {[[-8, -5], [8, -5], [-8, 5], [8, 5], [0, 0]].map(([x, z], i) => (
+        <group key={i} position={[x, 5.6, z]}>
+          <mesh>
+            <boxGeometry args={[2.8, 0.08, 0.18]} />
+            <meshStandardMaterial color="#dbe7ff" emissive="#9fb9ff" emissiveIntensity={0.55} toneMapped={false} />
+          </mesh>
+          <pointLight intensity={0.18} distance={9} color="#dce8ff" />
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function OfficeProps() {
+  return (
+    <group>
+      <Plant position={[-13.4, 0, -8.2]} scale={0.8} />
+      <Plant position={[13.1, 0, 8.4]} scale={0.9} />
+      <Plant position={[-13.5, 0, 8.3]} scale={0.7} />
+      <Shelf position={[13.2, 0, -5.4]} rotation={-Math.PI / 2} />
+      <Shelf position={[-4.8, 0, -10.2]} rotation={0} />
+      <CoffeeTable position={[3.7, 0, 2.6]} />
+    </group>
+  );
+}
+
+function Plant({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
+  return (
+    <group position={position} scale={scale}>
+      <mesh position={[0, 0.32, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.36, 0.48, 0.64, 24]} />
+        <meshStandardMaterial color="#f4efe5" roughness={0.42} />
+      </mesh>
+      <mesh position={[0, 0.67, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.34, 24]} />
+        <meshStandardMaterial color="#21190f" roughness={0.85} />
+      </mesh>
+      {Array.from({ length: 7 }).map((_, i) => {
+        const a = (i / 7) * Math.PI * 2;
+        return (
+          <group key={i} position={[0, 0.8 + i * 0.04, 0]} rotation={[0.35, a, 0.35]}>
+            <mesh position={[0.28, 0.18, 0]} castShadow>
+              <sphereGeometry args={[0.18, 16, 8]} />
+              <meshStandardMaterial color={i % 2 ? "#1f8f58" : "#2bc274"} roughness={0.38} />
+            </mesh>
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+function Shelf({ position, rotation }: { position: [number, number, number]; rotation: number }) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      <mesh position={[0, 0.72, 0]} castShadow receiveShadow><boxGeometry args={[2.6, 1.44, 0.28]} /><meshStandardMaterial color="#19223b" roughness={0.74} /></mesh>
+      {[-0.75, 0, 0.75].map((x, i) => <mesh key={i} position={[x, 1.16, 0.18]} castShadow><boxGeometry args={[0.28, 0.6, 0.12]} /><meshStandardMaterial color={["#5b8cff", "#21d4a8", "#f5a524"][i]} roughness={0.65} /></mesh>)}
+      <mesh position={[0, 0.36, 0.18]} castShadow><boxGeometry args={[1.8, 0.08, 0.16]} /><meshStandardMaterial color="#dce8ff" roughness={0.55} /></mesh>
+    </group>
+  );
+}
+
+function CoffeeTable({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.32, 0]} castShadow receiveShadow><boxGeometry args={[1.6, 0.08, 0.85]} /><meshStandardMaterial color="#26314f" roughness={0.42} metalness={0.12} /></mesh>
+      <mesh position={[-0.45, 0.39, 0]} castShadow><boxGeometry args={[0.45, 0.035, 0.58]} /><meshStandardMaterial color="#eaf0ff" roughness={0.75} /></mesh>
+      <mesh position={[0.45, 0.42, 0.08]} castShadow><cylinderGeometry args={[0.13, 0.13, 0.18, 18]} /><meshStandardMaterial color="#f5f5f5" roughness={0.38} /></mesh>
+    </group>
+  );
+}
+
 function WorkRequestStation({ laneId, onRequestLane, onMoveSelected, selected }: { laneId: LaneId; onRequestLane: (lane: LaneId) => void; onMoveSelected: (point: { x: number; z: number }, source?: "floor" | "zone") => void; selected: boolean }) {
   const zone = LANE_ZONES[laneId];
   const x = zone.center[0];
@@ -215,6 +327,11 @@ function WorkRequestStation({ laneId, onRequestLane, onMoveSelected, selected }:
       <mesh
         position={[0, 0.08, 0]}
         onClick={(e) => {
+          e.stopPropagation();
+          if (selected) onMoveSelected({ x, z }, "zone");
+          onRequestLane(laneId);
+        }}
+        onContextMenu={(e) => {
           e.stopPropagation();
           if (selected) onMoveSelected({ x, z }, "zone");
           onRequestLane(laneId);
@@ -229,7 +346,7 @@ function WorkRequestStation({ laneId, onRequestLane, onMoveSelected, selected }:
         <ringGeometry args={[0.78, 0.95, 36]} />
         <meshBasicMaterial color="#eaf0ff" transparent opacity={0.5} side={THREE.DoubleSide} />
       </mesh>
-      <Html position={[0, 1.2, 0]} center distanceFactor={13} pointerEvents="none">
+      <Html position={[0, 1.2, 0]} center distanceFactor={13} zIndexRange={OFFICE_HTML_Z} pointerEvents="none">
         <div style={{ whiteSpace: "nowrap", padding: "5px 9px", borderRadius: 999, background: "rgba(9,14,29,0.84)", border: `1px solid ${zone.color}99`, color: "#eaf0ff", fontSize: 10.5, fontWeight: 800, boxShadow: "0 8px 18px rgba(0,0,0,0.34)" }}>
           ＋ 업무 요청
         </div>
@@ -249,7 +366,7 @@ function MoveTargetMarker({ target }: { target: MoveTarget }) {
         <circleGeometry args={[0.1, 24]} />
         <meshBasicMaterial color="#21d4a8" transparent opacity={0.88} />
       </mesh>
-      <Html position={[0, 0.8, 0]} center distanceFactor={14} pointerEvents="none">
+      <Html position={[0, 0.8, 0]} center distanceFactor={14} zIndexRange={OFFICE_HTML_Z} pointerEvents="none">
         <div className="bx-chip" style={{ color: "#21d4a8", background: "rgba(7,12,24,0.82)" }}>이동 좌표</div>
       </Html>
     </group>
@@ -285,7 +402,7 @@ function MeetingRoomShell() {
         <boxGeometry args={[3.2, 0.18, 1.5]} />
         <meshStandardMaterial color="#18223e" emissive="#263a77" emissiveIntensity={0.18} roughness={0.55} />
       </mesh>
-      <Html position={[0, 1.15, 2.8]} center distanceFactor={14} pointerEvents="none">
+      <Html position={[0, 1.15, 2.8]} center distanceFactor={14} zIndexRange={OFFICE_HTML_Z} pointerEvents="none">
         <div className="bx-chip" style={{ background: "rgba(9,14,29,0.86)", color: "#dbe7ff", borderColor: "rgba(168,199,255,0.32)" }}>
           승인 회의실 · Human Gate
         </div>

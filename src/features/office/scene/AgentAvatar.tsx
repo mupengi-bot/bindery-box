@@ -2,9 +2,9 @@
 
 import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { sampleRoute, type AgentRoute } from "../routing";
+import type { AgentRoute } from "../routing";
 import type { AgentStatus } from "../types";
 import { STATUS_COLOR, STATUS_RING } from "./sceneConfig";
 
@@ -25,7 +25,9 @@ export interface AgentAvatarProps {
   onSelect: (id: string) => void;
 }
 
-const easeInOut = (t: number) => t * t * (3 - 2 * t);
+const ARRIVAL_EPSILON = 0.045;
+const WALK_SPEED = 4.2;
+const OFFICE_HTML_Z: [number, number] = [4, 0];
 
 // A procedural, Claw3D-style office employee: capsule torso, sphere head,
 // swinging arms/legs, a status halo and a floating nameplate. Running agents
@@ -51,18 +53,23 @@ export function AgentAvatar({
   const ring = useRef<THREE.Mesh>(null);
   const dot = useRef<THREE.MeshBasicMaterial>(null);
 
-  const t = useRef(Math.abs(Math.sin(phase)) * 0.6);
-  const dir = useRef(1);
   const prev = useRef(new THREE.Vector3(home[0], 0, home[1]));
-  const tmp = useMemo(() => new THREE.Vector3(), []);
+  const target = useMemo(() => new THREE.Vector3(), []);
+  const [arrived, setArrived] = useState(false);
 
   const homeVec = useMemo(() => new THREE.Vector3(home[0], 0, home[1]), [home]);
   const rallyVec = useMemo(() => new THREE.Vector3(rally[0], 0, rally[1]), [rally]);
   const routePoints = route?.waypoints;
+  const routeKey = routePoints && routePoints.length > 0 ? routePoints.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join("|") : `${home[0].toFixed(2)},${home[1].toFixed(2)}:${status}`;
+
+  useEffect(() => {
+    setArrived(false);
+  }, [routeKey]);
 
   const color = STATUS_COLOR[status];
   const ringColor = STATUS_RING[status];
-  const moving = status === "running";
+  const moving = status === "running" || Boolean(route?.moving);
+  const working = arrived && Boolean(route?.moving);
   const firstName = useMemo(() => name.split(" ")[0] ?? name, [name]);
 
   useFrame((state, delta) => {
@@ -71,31 +78,26 @@ export function AgentAvatar({
     const time = state.clock.elapsedTime + phase;
 
     // --- locomotion target ---
-    if (routePoints && routePoints.length > 1) {
-      t.current += dir.current * delta * 0.22;
-      if (t.current >= 1) {
-        t.current = 1;
-        dir.current = -1;
-      } else if (t.current <= 0) {
-        t.current = 0;
-        dir.current = 1;
-      }
-      const [x, z] = sampleRoute(routePoints, easeInOut(t.current));
-      tmp.set(x, 0, z);
+    // RTS movement is one-shot: move toward the current command target, clamp on
+    // arrival, then stay there in a working state. Do not ping-pong back to the
+    // seat; the office projection is the source of truth for future moves.
+    if (routePoints && routePoints.length > 0) {
+      const last = routePoints[routePoints.length - 1];
+      target.set(last[0], 0, last[1]);
     } else if (moving) {
-      t.current += dir.current * delta * 0.32;
-      if (t.current >= 1) {
-        t.current = 1;
-        dir.current = -1;
-      } else if (t.current <= 0) {
-        t.current = 0;
-        dir.current = 1;
-      }
-      tmp.copy(homeVec).lerp(rallyVec, easeInOut(t.current));
+      target.copy(rallyVec);
     } else {
-      tmp.copy(homeVec);
+      target.copy(homeVec);
     }
-    g.position.lerp(tmp, 0.08);
+
+    const distance = g.position.distanceTo(target);
+    if (distance <= ARRIVAL_EPSILON) {
+      g.position.copy(target);
+      if (route && !arrived) setArrived(true);
+    } else {
+      const step = Math.min(1, (WALK_SPEED * delta) / distance);
+      g.position.lerp(target, step);
+    }
 
     // --- facing: turn toward travel direction, else toward plaza centre ---
     const vx = g.position.x - prev.current.x;
@@ -119,7 +121,7 @@ export function AgentAvatar({
 
     // --- status halo pulse ---
     if (ring.current) {
-      const s = 1 + (moving ? Math.sin(time * 4) * 0.12 : Math.sin(time * 2) * 0.04);
+      const s = 1 + (moving && !working ? Math.sin(time * 4) * 0.12 : working ? Math.sin(time * 5.5) * 0.08 : Math.sin(time * 2) * 0.04);
       ring.current.scale.set(s, s, s);
     }
     if (dot.current) {
@@ -205,7 +207,7 @@ export function AgentAvatar({
       </mesh>
 
       {/* nameplate */}
-      <Html position={[0, 2.35, 0]} center distanceFactor={11} zIndexRange={[20, 0]} pointerEvents="none">
+      <Html position={[0, 2.35, 0]} center distanceFactor={11} zIndexRange={OFFICE_HTML_Z} pointerEvents="none">
         <div
           style={{
             transform: "translateY(-50%)",
@@ -223,7 +225,7 @@ export function AgentAvatar({
         >
           <div>{firstName}</div>
           <div style={{ fontSize: 9, fontWeight: 500, color: "#9fb0d8", marginTop: 1 }}>{role}</div>
-          {route?.note && <div style={{ fontSize: 8.5, fontWeight: 800, color: "#cbd8ff", marginTop: 2 }}>{route.note}</div>}
+          {working ? <div style={{ fontSize: 8.5, fontWeight: 900, color: "#21d4a8", marginTop: 2 }}>업무중</div> : route?.note && <div style={{ fontSize: 8.5, fontWeight: 800, color: "#cbd8ff", marginTop: 2 }}>{route.note}</div>}
         </div>
       </Html>
     </group>
