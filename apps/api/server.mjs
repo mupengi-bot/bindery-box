@@ -9,7 +9,8 @@ import {
   seedDemoState,
   deriveMetrics,
   executeCommand,
-  projectOverview
+  projectOverview,
+  projectLiveLog
 } from "../../packages/runtime/src/index.mjs";
 import { listConnectors, buildCapabilityMap } from "../../packages/connectors/src/index.mjs";
 import { createKnowledgeBase, searchKnowledge } from "../../packages/knowledge/src/index.mjs";
@@ -70,6 +71,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && wsAuditMatch) {
       const state = await store.load();
       return send(res, 200, { auditEvents: state.auditEvents.slice(0, 50), officeEvents: (state.officeEvents ?? []).slice(-50).reverse() });
+    }
+    const wsLiveLogMatch = pathname.match(/^\/api\/workspaces\/([^/]+)\/live-log$/);
+    if (req.method === "GET" && wsLiveLogMatch) {
+      return send(res, 200, projectLiveLog(await store.load(), wsLiveLogMatch[1]));
     }
 
     // --- connector hub ---

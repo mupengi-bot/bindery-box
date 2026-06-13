@@ -8,7 +8,8 @@ import {
   seedDemoState,
   executeCommand,
   deriveMetrics,
-  projectOverview
+  projectOverview,
+  projectLiveLog
 } from "../packages/runtime/src/index.mjs";
 import { CommandType } from "../packages/contracts/src/index.mjs";
 import { Decision, evaluateTaskRun } from "../packages/policy/src/index.mjs";
@@ -83,6 +84,20 @@ assert.ok(hits.length > 0, "knowledge search should find risk content");
 const line2 = kb.nodes.find((n) => n.title === "Line 2");
 assert.ok(neighbors(kb, line2.id).some((n) => n.relation === "has_risk"), "graph traversal should resolve relations");
 
+// 12) Live Operations Log projection merges all four activity planes, ordered.
+const liveLog = projectLiveLog(state, "default");
+assert.ok(liveLog.entries.length > 0, "live log should project entries after activity");
+const liveSources = new Set(liveLog.entries.map((e) => e.source));
+assert.ok(liveSources.has("agent") && liveSources.has("runtime"), "live log should include agent + runtime planes");
+for (let i = 1; i < liveLog.entries.length; i += 1) {
+  assert.ok(liveLog.entries[i - 1].ts >= liveLog.entries[i].ts, "live log must be newest-first ordered");
+}
+// Running another task must grow the live log (client sees activity stream).
+const beforeLive = projectLiveLog(await store.load(), "default").entries.length;
+await executeCommand({ store, office, command: { type: CommandType.taskRun, taskId: "task_production_risk", requestedBy: "validation" } });
+const afterLive = projectLiveLog(await store.load(), "default").entries.length;
+assert.ok(afterLive > beforeLive, "live log should grow after a task run");
+
 console.log(JSON.stringify({
   ok: true,
   agents: state.agents.length,
@@ -93,5 +108,6 @@ console.log(JSON.stringify({
   auditEvents: state.auditEvents.length,
   officeEvents: state.officeEvents.length,
   connectors: connectors.length,
-  knowledgeHits: hits.length
+  knowledgeHits: hits.length,
+  liveLogEntries: afterLive
 }, null, 2));

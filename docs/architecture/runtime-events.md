@@ -317,9 +317,24 @@ GET /api/workspaces/:id/overview
 GET /api/workspaces/:id/tasks
 GET /api/workspaces/:id/approvals
 GET /api/workspaces/:id/audit-events
+GET /api/workspaces/:id/live-log
 ```
 
 The UI should not be coupled to runtime internal state files.
+
+### Live Operations Log
+
+`GET /api/workspaces/:id/live-log` projects the four activity planes —
+runtime events, agent task runs (the agent picking up work + its produced
+answer), the audit trail, and Mattermost office posts — into a single
+time-ordered (newest-first) stream so the client can watch agents being
+invoked in real time, including in the stateless cloud demo. Each entry is
+`{ id, ts, source, level, actor, channel, action, message }` where `source`
+is one of `runtime | agent | audit | office` and `level` is one of
+`info | success | running | pending | error`. The response also carries
+`{ generatedAt, total, returned, counts }`. The Control Room polls this
+endpoint every 2.5s (with a manual refresh + auto-refresh toggle); running a
+task or deciding an approval makes the stream grow immediately.
 
 ## Office Sync Shape
 

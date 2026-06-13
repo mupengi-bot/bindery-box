@@ -51,7 +51,7 @@ Public repository artifacts must contain templates and demo data only. Do not co
 
 BINDERY BOX now includes a first runnable local MVP slice:
 
-- `apps/web` — Mission Control dashboard for agents, tasks, approvals, and audit events.
+- `apps/web` — Mission Control "Control Room": a 3-pane workspace (agent org · operations board · approval/knowledge/office inspector) with a live operations log that streams runtime, agent, audit, and office activity (`GET /api/workspaces/:id/live-log`, auto-refreshed every 2.5s).
 - `apps/api` — local HTTP API on port `4311`.
 - `packages/core` — shared product/domain model.
 - `packages/runtime` — demo task execution, approval, and audit lifecycle.

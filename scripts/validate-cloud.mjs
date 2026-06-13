@@ -68,7 +68,20 @@ r = await call("GET", "/api/workspaces/default/overview");
 assert.ok(r.body.metrics.completedTasks >= 2, "completed tasks visible after runs");
 assert.ok(r.body.officeEvents.length > 0, "office events projected into overview");
 
-// 9) Unknown route -> 404 (defensive).
+// 9) Live Operations Log reachable through the cloud handler + grows on activity.
+r = await call("GET", "/api/workspaces/default/live-log");
+assert.equal(r.status, 200, "live-log 200");
+assert.ok(Array.isArray(r.body.entries) && r.body.entries.length > 0, "live-log returns entries");
+const liveBefore = r.body.entries.length;
+await call("POST", "/api/tasks/task_production_risk/run", { body: { requestedBy: "cloud-validation" } });
+r = await call("GET", "/api/workspaces/default/live-log");
+assert.ok(r.body.entries.length >= liveBefore, "live-log reflects new activity");
+
+// 10) Both /api-prefixed and bare live-log routes resolve (Vercel rewrite parity).
+r = await call("GET", "/workspaces/default/live-log");
+assert.equal(r.status, 200, "bare live-log route 200");
+
+// 11) Unknown route -> 404 (defensive).
 r = await call("GET", "/api/nope");
 assert.equal(r.status, 404, "unknown route 404");
 
@@ -78,6 +91,6 @@ console.log(JSON.stringify({
   storeBackend: r.body ? "memory" : "memory",
   completedTasks: (await call("GET", "/api/workspaces/default/overview")).body.metrics.completedTasks,
   checks: [
-    "health", "overview", "connectors", "knowledge", "run", "approval", "stateless-demo"
+    "health", "overview", "connectors", "knowledge", "run", "approval", "live-log", "stateless-demo"
   ]
 }, null, 2));

@@ -248,6 +248,141 @@ export function projectOverview(state, workspaceId) {
   };
 }
 
+// --- live operations log projection -----------------------------------------
+//
+// Live Operations Log: a time-ordered merge of the four activity planes so the
+// client can watch agents being invoked and their results stream in, even in
+// the cloud demo. Sources:
+//   * runtime — append-only event log (command -> event flow)
+//   * agent   — task runs (an agent picking up work + its produced answer)
+//   * audit   — human-readable audit trail
+//   * office  — Mattermost-mock channel posts
+// Every entry is { id, ts, source, level, actor, channel, action, message }.
+const LIVE_EVENT_META = Object.freeze({
+  "task.run.started": { level: "running", label: "업무 실행 시작" },
+  "task.run.completed": { level: "success", label: "업무 완료" },
+  "task.run.failed": { level: "error", label: "업무 실패" },
+  "tool.call.requested": { level: "info", label: "툴 호출 요청" },
+  "tool.call.blocked": { level: "error", label: "툴 호출 차단" },
+  "tool.call.pending-approval": { level: "pending", label: "승인 대기 전환" },
+  "tool.call.completed": { level: "success", label: "툴 호출 완료" },
+  "approval.requested": { level: "pending", label: "승인 요청" },
+  "approval.decided": { level: "info", label: "승인 결정" },
+  "office.message.posted": { level: "info", label: "오피스 게시" }
+});
+
+function liveEventDetail(event) {
+  return event.taskTitle
+    || event.resultSummary
+    || event.reason
+    || (event.decision ? `결정: ${event.decision}` : "")
+    || event.taskId
+    || event.approvalId
+    || event.taskRunId
+    || "런타임 이벤트";
+}
+
+const NEGATIVE_RE = /(fail|block|reject|error|실패|차단|반려|거부)/i;
+
+export function projectLiveLog(state, workspaceId, { limit = 80 } = {}) {
+  const wsId = workspaceId === "default" ? (state.workspace?.id ?? "ws_default") : workspaceId;
+  const inWs = (item) => !item.workspaceId || item.workspaceId === wsId;
+  const agentName = (id) => state.agents?.find((a) => a.id === id)?.name ?? id ?? "agent";
+  const taskTitle = (id) => state.tasks?.find((t) => t.id === id)?.title ?? id ?? "task";
+  const entries = [];
+
+  // 1) Runtime plane — the append-only event log.
+  for (const event of state.events ?? []) {
+    const meta = LIVE_EVENT_META[event.type] ?? { level: "info", label: event.type };
+    entries.push({
+      id: event.id,
+      ts: event.occurredAt,
+      source: "runtime",
+      level: meta.level,
+      actor: "runtime",
+      channel: null,
+      action: event.type,
+      message: `${meta.label} · ${liveEventDetail(event)}`
+    });
+  }
+
+  // 2) Agent plane — task runs surface the agent picking up work + its answer.
+  for (const run of state.taskRuns ?? []) {
+    if (!inWs(run)) continue;
+    entries.push({
+      id: `${run.id}:start`,
+      ts: run.startedAt,
+      source: "agent",
+      level: "running",
+      actor: agentName(run.agentId),
+      channel: null,
+      action: "agent.work.started",
+      message: `${taskTitle(run.taskId)} 처리 시작`
+    });
+    if (run.resultSummary) {
+      entries.push({
+        id: `${run.id}:result`,
+        ts: run.completedAt ?? run.startedAt,
+        source: "agent",
+        level: run.status === "failed" ? "error" : run.status === "waiting_approval" ? "pending" : "success",
+        actor: agentName(run.agentId),
+        channel: null,
+        action: "agent.work.result",
+        message: run.resultSummary
+      });
+    }
+  }
+
+  // 3) Audit plane — skip office mirror rows (the office plane covers them).
+  for (const ev of state.auditEvents ?? []) {
+    if (!inWs(ev)) continue;
+    if (ev.actor === "office.mattermost-mock") continue;
+    entries.push({
+      id: ev.id,
+      ts: ev.ts ?? ev.createdAt,
+      source: "audit",
+      level: NEGATIVE_RE.test(`${ev.action} ${ev.message}`) ? "error" : "info",
+      actor: ev.actor,
+      channel: ev.target || null,
+      action: ev.action,
+      message: ev.message || ev.action
+    });
+  }
+
+  // 4) Office plane — Mattermost-mock channel feed.
+  for (const post of state.officeEvents ?? []) {
+    entries.push({
+      id: post.id,
+      ts: post.postedAt,
+      source: "office",
+      level: NEGATIVE_RE.test(post.text) ? "error" : post.channelRef === "#approvals" ? "pending" : "info",
+      actor: post.provider,
+      channel: post.channelRef,
+      action: post.kind,
+      message: post.text
+    });
+  }
+
+  const sorted = entries
+    .filter((e) => e.ts)
+    .sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0))
+    .slice(0, limit);
+
+  const counts = sorted.reduce((acc, e) => {
+    acc[e.source] = (acc[e.source] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return {
+    workspaceId: wsId,
+    generatedAt: nowIso(),
+    total: entries.length,
+    returned: sorted.length,
+    counts,
+    entries: sorted
+  };
+}
+
 // --- backward-compatible wrappers (used by older callers / /state) ----------
 
 export function runTask(state, taskId, requestedBy = "operator", options = {}) {
