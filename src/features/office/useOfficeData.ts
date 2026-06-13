@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Connector, KnowledgeResult, LiveLog, Workstream } from "./types";
+import type { Connector, GoldenImage, KnowledgeResult, LiveLog, Workstream } from "./types";
 
 const WS = "default";
 const POLL_MS = 6000;
@@ -16,6 +16,7 @@ export interface OfficeData {
   workstream: Workstream | null;
   liveLog: LiveLog | null;
   connectors: Connector[];
+  goldenImage: GoldenImage | null;
   loading: boolean;
   error: string | null;
   /** Refresh workstream + live-log immediately. */
@@ -34,19 +35,22 @@ export function useOfficeData(): OfficeData {
   const [workstream, setWorkstream] = useState<Workstream | null>(null);
   const [liveLog, setLiveLog] = useState<LiveLog | null>(null);
   const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [goldenImage, setGoldenImage] = useState<GoldenImage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
 
   const refresh = useCallback(async () => {
     try {
-      const [ws, log] = await Promise.all([
+      const [ws, log, golden] = await Promise.all([
         getJSON<Workstream>(`/api/workspaces/${WS}/workstream`),
         getJSON<LiveLog>(`/api/workspaces/${WS}/live-log`),
+        getJSON<GoldenImage>(`/api/workspaces/${WS}/golden-image`),
       ]);
       if (!mounted.current) return;
       setWorkstream(ws);
       setLiveLog(log);
+      setGoldenImage(golden);
       setError(null);
     } catch (e) {
       if (mounted.current) setError(e instanceof Error ? e.message : String(e));
@@ -108,6 +112,7 @@ export function useOfficeData(): OfficeData {
     workstream,
     liveLog,
     connectors,
+    goldenImage,
     loading,
     error,
     refresh,

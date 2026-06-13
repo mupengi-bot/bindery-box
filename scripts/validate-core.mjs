@@ -29,11 +29,15 @@ async function main() {
   const conn = await handleRequest({ method: "GET", pathname: "/api/connectors" });
   check("GET connectors → list", conn.status === 200 && Array.isArray(conn.body.connectors) && conn.body.connectors.length > 0);
 
-  // 5) knowledge search
+  // 5) golden image identity projection
+  const golden = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/golden-image" });
+  check("GET golden-image → Claw3D core identity", golden.status === 200 && golden.body.identity?.surface === "claw3d-3d-office" && golden.body.status?.planesTotal >= 6);
+
+  // 6) knowledge search
   const know = await handleRequest({ method: "GET", pathname: "/api/knowledge/search", searchParams: new URLSearchParams({ q: "납기" }) });
   check("GET knowledge/search → results[]", know.status === 200 && Array.isArray(know.body.results));
 
-  // 6) task run + approval flow — pick a runnable mission from the workstream
+  // 7) task run + approval flow — pick a runnable mission from the workstream
   const runnable = ws.body.missions.find((m) => m.runnable);
   check("workstream has a runnable mission", !!runnable, runnable?.taskId);
   if (runnable) {

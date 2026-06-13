@@ -1,0 +1,206 @@
+{
+  "schema": "bindery-box/golden-image@1",
+  "version": "1.0.0",
+  "product": "BINDERY BOX / MUFI Box",
+  "codename": "golden-image",
+  "identity": {
+    "tagline": "An AI Company-in-a-Box, rendered as a living 3D office.",
+    "northStar": "Humans talk in familiar messenger rooms, agents work as visible staff in the Claw3D office, and Mission Control stays the operator governance layer.",
+    "surface": "claw3d-3d-office"
+  },
+  "lifecycle": "Command -> Policy Check -> Runtime Action -> Event(s) -> Persist -> Projection",
+  "invariants": [
+    {
+      "id": "3d-office-frontstage",
+      "statement": "The Claw3D-style 3D office is the primary surface (frontstage).",
+      "rationale": "Work becomes visible as a spatial office; the app must boot directly into the 3D office, not a console."
+    },
+    {
+      "id": "messenger-human-office",
+      "statement": "Humans collaborate through a familiar messenger 'human office', not a bespoke operator console.",
+      "rationale": "People should not have to learn the platform first; the messenger is where conversation and collaboration live."
+    },
+    {
+      "id": "runtime-command-event-lifecycle",
+      "statement": "All business state changes flow through Command -> Policy Check -> Runtime Action -> Event(s) -> Persist -> Projection.",
+      "rationale": "No surface (3D scene, messenger adapter, runtime worker) may mutate business state directly or bypass policy."
+    },
+    {
+      "id": "mission-control-backstage",
+      "statement": "Mission Control is backstage governance, reached by progressive disclosure — never the landing surface.",
+      "rationale": "Operators govern from slide-over sheets layered on top of the office; governance is available, not in the way."
+    },
+    {
+      "id": "no-2d-dashboard-first",
+      "statement": "No 2D-dashboard-first regression: the app must never boot into a 2D dashboard as its main surface.",
+      "rationale": "The golden image is an office-first product. A dashboard-first landing page would erase its core identity."
+    }
+  ],
+  "planes": [
+    {
+      "id": "control-plane",
+      "name": "Control Plane",
+      "role": "Command lifecycle, policy decisions, and projections.",
+      "owns": [
+        "commands",
+        "approvals",
+        "visible state",
+        "API surface"
+      ],
+      "mustNotOwn": [
+        "provider-specific runtime internals",
+        "direct UI mutation of business state"
+      ],
+      "surface": "src/server/controlPlane.mjs",
+      "maturity": "live"
+    },
+    {
+      "id": "agent-runtime",
+      "name": "Agent Runtime",
+      "role": "Agent job queue, run lifecycle, tool calls, and streaming output.",
+      "owns": [
+        "agent job queue",
+        "run lifecycle",
+        "tool calls",
+        "retries"
+      ],
+      "mustNotOwn": [
+        "UI layout",
+        "messenger formatting"
+      ],
+      "surface": "packages/runtime",
+      "maturity": "mock"
+    },
+    {
+      "id": "human-office",
+      "name": "Human Office / Messenger",
+      "role": "Messenger channels, threads, and visible human collaboration.",
+      "owns": [
+        "human conversation",
+        "channel routing",
+        "approval threads"
+      ],
+      "mustNotOwn": [
+        "runtime secrets",
+        "direct tool execution"
+      ],
+      "surface": "packages/office-mattermost",
+      "maturity": "mock"
+    },
+    {
+      "id": "connector-hub",
+      "name": "Connector Hub",
+      "role": "Connector manifests and scoped capability grants to customer systems.",
+      "owns": [
+        "connector manifests",
+        "capability map",
+        "scoped grants"
+      ],
+      "mustNotOwn": [
+        "tenant credentials",
+        "direct UI decisions"
+      ],
+      "surface": "packages/connectors",
+      "maturity": "live"
+    },
+    {
+      "id": "data-policy",
+      "name": "Data & Policy",
+      "role": "Append-only events, projections, audit, knowledge graph, and governance gates.",
+      "owns": [
+        "events",
+        "projections",
+        "audit log",
+        "knowledge graph",
+        "approval rules",
+        "human gates"
+      ],
+      "mustNotOwn": [
+        "raw private credentials",
+        "transport-specific formatting"
+      ],
+      "surface": "packages/data-store, packages/policy, packages/knowledge",
+      "maturity": "live"
+    },
+    {
+      "id": "desktop-launcher",
+      "name": "Desktop Launcher",
+      "role": "Install, start/stop, updates, local permissions, and appliance lifecycle.",
+      "owns": [
+        "install",
+        "start/stop",
+        "updates",
+        "local permission grants"
+      ],
+      "mustNotOwn": [
+        "cloud tenant state",
+        "shared business projections"
+      ],
+      "surface": "appliance (declared)",
+      "maturity": "planned"
+    }
+  ],
+  "uxLayers": [
+    {
+      "id": "frontstage",
+      "name": "3D Office (Claw3D)",
+      "tier": "primary",
+      "disclosure": "always-visible",
+      "description": "The spatial office where agents work as visible staff. The app boots here.",
+      "invariantRefs": [
+        "3d-office-frontstage",
+        "no-2d-dashboard-first"
+      ]
+    },
+    {
+      "id": "messenger",
+      "name": "Human Office",
+      "tier": "collaboration",
+      "disclosure": "channel/thread",
+      "description": "Familiar messenger rooms where humans talk to each other and to agents.",
+      "invariantRefs": [
+        "messenger-human-office"
+      ]
+    },
+    {
+      "id": "backstage",
+      "name": "Mission Control",
+      "tier": "governance",
+      "disclosure": "progressive (slide-over sheets)",
+      "description": "Operator governance — missions, approvals, connectors, knowledge — layered on demand.",
+      "invariantRefs": [
+        "mission-control-backstage"
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "office-3d",
+      "name": "3D Office Experience",
+      "kind": "ui",
+      "path": "src/features/office",
+      "uxLayer": "frontstage"
+    },
+    {
+      "id": "hud-sheets",
+      "name": "HUD Sheets",
+      "kind": "ui",
+      "path": "src/features/office/hud",
+      "uxLayer": "backstage"
+    },
+    {
+      "id": "control-api",
+      "name": "Control Plane API",
+      "kind": "api",
+      "path": "src/app/api/[...path]/route.ts",
+      "uxLayer": "backstage"
+    },
+    {
+      "id": "golden-image-api",
+      "name": "Golden Image API",
+      "kind": "api",
+      "path": "/api/golden-image",
+      "uxLayer": "backstage"
+    }
+  ]
+}

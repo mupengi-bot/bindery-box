@@ -120,6 +120,7 @@ export function Hud({
         onClose={() => setSheet(null)}
         workstream={ws}
         connectors={data.connectors}
+        goldenImage={data.goldenImage}
         onRun={runMission}
         onDecide={decide}
         searchKnowledge={data.searchKnowledge}

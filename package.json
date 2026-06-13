@@ -10,7 +10,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "check": "node scripts/validate-core.mjs",
-    "check:arch": "node scripts/validate-architecture.mjs"
+    "check:arch": "node scripts/validate-architecture.mjs",
+    "check:golden": "node scripts/validate-golden-image.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

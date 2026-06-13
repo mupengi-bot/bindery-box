@@ -25,6 +25,7 @@ import {
 } from "../../packages/runtime/src/index.mjs";
 import { listConnectors, buildCapabilityMap } from "../../packages/connectors/src/index.mjs";
 import { createKnowledgeBase, searchKnowledge } from "../../packages/knowledge/src/index.mjs";
+import { getGoldenImage, projectGoldenImage } from "../../packages/golden-image/src/index.mjs";
 
 // Module-scoped store: persists across warm invocations, reseeds on cold start.
 let sharedStore = null;
@@ -120,6 +121,26 @@ export async function handleRequest({
     const state = await store.load();
     const kb = createKnowledgeBase(state.workspace?.id ?? "ws_default");
     return { status: 200, body: { documents: kb.documents.length, nodes: kb.nodes, edges: kb.edges } };
+  }
+
+  // --- golden image (core product identity) ---
+  // Canonical, static manifest: the planes / UX layers / invariants that define
+  // the product identity behind the Claw3D office.
+  if (method === "GET" && route === "/golden-image") {
+    return { status: 200, body: getGoldenImage() };
+  }
+  // Per-workspace projection: the same manifest with live, public-safe runtime
+  // signals overlaid per plane so the 3D office HUD can render what is running.
+  const goldenMatch = route.match(/^\/workspaces\/([^/]+)\/golden-image$/);
+  if (method === "GET" && goldenMatch) {
+    const state = await store.load();
+    const projection = projectGoldenImage({
+      workspaceId: goldenMatch[1],
+      generatedAt: new Date().toISOString(),
+      metrics: deriveMetrics(state),
+      signals: { connectors: listConnectors().length, store: describeStoreBackend().backend },
+    });
+    return { status: 200, body: projection };
   }
 
   // --- platform command endpoints ---

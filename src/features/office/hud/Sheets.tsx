@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import type { Connector, KnowledgeResult, Workstream } from "../types";
+import type { Connector, GoldenImage, GoldenPlane, KnowledgeResult, Workstream } from "../types";
 import { Bar, levelColor } from "./ui";
 
-export type SheetId = "missions" | "connectors" | "knowledge" | "approvals" | null;
+export type SheetId = "missions" | "golden" | "connectors" | "knowledge" | "approvals" | null;
 
 export const SHEET_TABS: { id: Exclude<SheetId, null>; label: string; glyph: string }[] = [
   { id: "missions", label: "미션 보드", glyph: "▤" },
+  { id: "golden", label: "골든 이미지", glyph: "◉" },
   { id: "connectors", label: "커넥터 허브", glyph: "⧉" },
   { id: "knowledge", label: "지식 그래프", glyph: "❖" },
   { id: "approvals", label: "승인 대기", glyph: "✓" },
@@ -21,6 +22,7 @@ export function Sheets({
   onClose,
   workstream,
   connectors,
+  goldenImage,
   onRun,
   onDecide,
   searchKnowledge,
@@ -30,6 +32,7 @@ export function Sheets({
   onClose: () => void;
   workstream: Workstream | null;
   connectors: Connector[];
+  goldenImage: GoldenImage | null;
   onRun: (taskId: string) => void;
   onDecide: (approvalId: string, decision: "approved" | "rejected") => void;
   searchKnowledge: (q: string) => Promise<KnowledgeResult[]>;
@@ -64,6 +67,7 @@ export function Sheets({
         </div>
 
         {sheet === "missions" && <MissionsView workstream={workstream} onRun={onRun} busy={busy} />}
+        {sheet === "golden" && <GoldenImageView goldenImage={goldenImage} />}
         {sheet === "connectors" && <ConnectorsView connectors={connectors} />}
         {sheet === "knowledge" && <KnowledgeView searchKnowledge={searchKnowledge} />}
         {sheet === "approvals" && <ApprovalsView workstream={workstream} onDecide={onDecide} busy={busy} />}
@@ -107,6 +111,99 @@ function MissionsView({ workstream, onRun, busy }: { workstream: Workstream | nu
       </div>
     </div>
   );
+}
+
+function GoldenImageView({ goldenImage }: { goldenImage: GoldenImage | null }) {
+  if (!goldenImage) return <Empty>골든 이미지 매니페스트를 불러오는 중…</Empty>;
+  const live = goldenImage.status;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="bx-panel" style={{ padding: 14, borderRadius: 14, borderColor: "rgba(91,140,255,0.42)" }}>
+        <div style={{ fontSize: 12, color: "var(--bx-muted)", marginBottom: 4 }}>Core Identity · Golden Image</div>
+        <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 1.18 }}>{goldenImage.identity.tagline}</div>
+        <div style={{ fontSize: 11.5, color: "var(--bx-muted)", marginTop: 8, lineHeight: 1.55 }}>{goldenImage.identity.northStar}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+          <span className="bx-chip" style={{ color: "#eaf0ff" }}>surface: {goldenImage.identity.surface}</span>
+          {live && <span className="bx-chip" style={{ color: "#21d4a8" }}>{live.planesLive}/{live.planesTotal} planes live</span>}
+          {live && <span className="bx-chip" style={{ color: "#f5a524" }}>{live.invariants} invariants</span>}
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Planes behind the Claw3D office</SectionTitle>
+        <div style={{ display: "grid", gap: 8 }}>
+          {goldenImage.planes.map((p) => <PlaneCard key={p.id} plane={p} />)}
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Progressive UX layers</SectionTitle>
+        <div style={{ display: "grid", gap: 8 }}>
+          {goldenImage.uxLayers.map((l) => (
+            <div key={l.id} className="bx-panel" style={{ padding: 11, borderRadius: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 800, flex: 1 }}>{l.name}</span>
+                <span className="bx-chip" style={{ color: layerColor(l.id) }}>{l.tier}</span>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--bx-muted)", marginTop: 5, lineHeight: 1.45 }}>{l.description}</div>
+              <div style={{ fontSize: 10.5, color: "#8ea2d2", marginTop: 5 }}>disclosure: {l.disclosure}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Non-negotiable invariants</SectionTitle>
+        <div style={{ display: "grid", gap: 7 }}>
+          {goldenImage.invariants.map((i) => (
+            <div key={i.id} style={{ display: "grid", gridTemplateColumns: "18px 1fr", gap: 8, fontSize: 11.2, lineHeight: 1.42 }}>
+              <span style={{ color: "#21d4a8", fontWeight: 900 }}>✓</span>
+              <span><b style={{ color: "var(--bx-text)" }}>{i.statement}</b><br /><span style={{ color: "var(--bx-muted)" }}>{i.rationale}</span></span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bx-panel" style={{ padding: 12, borderRadius: 12 }}>
+        <div style={{ fontSize: 11, color: "var(--bx-muted)", marginBottom: 4 }}>Runtime invariant</div>
+        <code style={{ fontSize: 11, lineHeight: 1.45, color: "#cbd8ff" }}>{goldenImage.lifecycle}</code>
+      </div>
+    </div>
+  );
+}
+
+function PlaneCard({ plane }: { plane: GoldenPlane }) {
+  const state = plane.runtime?.state ?? plane.maturity;
+  return (
+    <div className="bx-panel" style={{ padding: 12, borderRadius: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 9, height: 9, borderRadius: 999, background: stateColor(state), boxShadow: `0 0 14px ${stateColor(state)}88` }} />
+        <span style={{ fontSize: 12.5, fontWeight: 800, flex: 1 }}>{plane.name}</span>
+        <span className="bx-chip" style={{ color: stateColor(state) }}>{state}</span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--bx-muted)", marginTop: 6, lineHeight: 1.45 }}>{plane.role}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+        {plane.owns.slice(0, 3).map((o) => <span key={o} className="bx-chip" style={{ color: "#9fb0d8" }}>{o}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 11, color: "var(--bx-muted)", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", margin: "2px 0 8px" }}>{children}</div>;
+}
+
+function stateColor(state: string) {
+  if (state === "running") return "#21d4a8";
+  if (state === "queued") return "#f5a524";
+  if (state === "planned") return "#8ea2d2";
+  return "#5b8cff";
+}
+
+function layerColor(id: string) {
+  if (id === "frontstage") return "#21d4a8";
+  if (id === "messenger") return "#f5a524";
+  return "#5b8cff";
 }
 
 function ConnectorsView({ connectors }: { connectors: Connector[] }) {

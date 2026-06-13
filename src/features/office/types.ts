@@ -198,3 +198,50 @@ export interface KnowledgeResult {
   snippet?: string;
   [k: string]: unknown;
 }
+
+// --- Golden Image (core product identity) -----------------------------------
+
+export type PlaneMaturity = "live" | "mock" | "planned";
+export type PlaneRuntimeState = "running" | "queued" | "ready" | "planned";
+
+export interface GoldenPlane {
+  id: string;
+  name: string;
+  role: string;
+  owns: string[];
+  mustNotOwn: string[];
+  surface: string;
+  maturity: PlaneMaturity;
+  runtime?: { state: PlaneRuntimeState; signals: Record<string, string | number> };
+}
+
+export interface GoldenInvariant {
+  id: string;
+  statement: string;
+  rationale: string;
+}
+
+export interface GoldenUxLayer {
+  id: string;
+  name: string;
+  tier: string;
+  disclosure: string;
+  description: string;
+  invariantRefs: string[];
+}
+
+export interface GoldenImage {
+  schema: string;
+  version: string;
+  product: string;
+  codename: string;
+  identity: { tagline: string; northStar: string; surface: string };
+  lifecycle: string;
+  invariants: GoldenInvariant[];
+  planes: GoldenPlane[];
+  uxLayers: GoldenUxLayer[];
+  surfaces: { id: string; name: string; kind: string; path: string; uxLayer: string }[];
+  workspaceId?: string;
+  generatedAt?: string | null;
+  status?: { planesTotal: number; planesLive: number; invariants: number; surface: string };
+}
