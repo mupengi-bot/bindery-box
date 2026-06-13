@@ -383,6 +383,282 @@ export function projectLiveLog(state, workspaceId, { limit = 80 } = {}) {
   };
 }
 
+// --- workstream projection (AI company simulator) ---------------------------
+//
+// projectWorkstream turns raw platform state into a human-facing "company
+// operations" view: a narrative stream of agent work + report beats, mission
+// cards with progress, gamified KPIs (company health / automation level /
+// agent energy), daily objectives, achievement badges, incident & approval
+// alerts, and topology/lane maps. It is a PURE derivation of state — the same
+// state always yields the same projection (no Date.now/Math.random), so it is
+// safe in the stateless cloud demo. The raw /live-log stays available for the
+// technical drawer; this is what the simulator cockpit renders on the surface.
+
+// Business lanes the simulator visualises. Agents/missions map onto a lane via
+// task category first, then role keywords as a fallback.
+const WORKSTREAM_LANES = Object.freeze([
+  { id: "production", label: "생산", category: "production", glyph: "▣", roleHint: /생산|produc/i, reward: "납기 리스크 ↓" },
+  { id: "sales", label: "영업", category: "sales", glyph: "◆", roleHint: /영업|sales/i, reward: "수주 가능성 ↑" },
+  { id: "scope3", label: "Scope 3", category: "scope3", glyph: "❖", roleHint: /탄소|scope|esg/i, reward: "데이터 누락 ↓" },
+  { id: "control", label: "관제", category: "control", glyph: "◈", roleHint: /승인|감사|ops|control/i, reward: "감사 추적 100%" }
+]);
+
+function laneForCategory(category) {
+  return WORKSTREAM_LANES.find((l) => l.id === category) ?? WORKSTREAM_LANES[3];
+}
+function laneForAgent(agent, tasks) {
+  const owned = tasks.find((t) => (t.assignedAgentId ?? t.ownerAgentId) === agent.id);
+  if (owned?.category) return laneForCategory(owned.category);
+  return WORKSTREAM_LANES.find((l) => l.roleHint.test(`${agent.role ?? ""} ${agent.name ?? ""}`)) ?? WORKSTREAM_LANES[3];
+}
+
+// Deterministic 0..1 hash of a string — used to give sparklines/energy a little
+// organic variation without any RNG (keeps the projection pure/replayable).
+function seedHash(str) {
+  let h = 2166136261;
+  for (const ch of String(str)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 1000) / 1000;
+}
+// A small ascending-ish sparkline series derived from a seed + target value.
+function sparkSeries(seed, target, n = 12) {
+  const base = seedHash(seed);
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    const wobble = seedHash(`${seed}:${i}`) - 0.5;
+    const ramp = (i / (n - 1)) * target;
+    out.push(Math.max(0, Math.round((ramp * 0.7 + target * 0.3 * base) + wobble * target * 0.18)));
+  }
+  out[n - 1] = target;
+  return out;
+}
+
+const MISSION_PROGRESS = Object.freeze({
+  queued: 8, running: 56, waiting_approval: 78, completed: 100, failed: 100
+});
+const MISSION_LEVEL = Object.freeze({
+  queued: "info", running: "running", waiting_approval: "pending", completed: "success", failed: "error"
+});
+const AGENT_ENERGY = Object.freeze({ running: 90, idle: 74, blocked: 32, disabled: 8 });
+
+function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {}) {
+  const wsId = workspaceId === "default" ? (state.workspace?.id ?? "ws_default") : workspaceId;
+  const inWs = (item) => !item.workspaceId || item.workspaceId === wsId;
+  const tasks = (state.tasks ?? []).filter(inWs);
+  const agents = (state.agents ?? []).filter(inWs);
+  const approvals = (state.approvals ?? []).filter(inWs);
+  const taskRuns = (state.taskRuns ?? []).filter(inWs);
+  const agentById = (id) => agents.find((a) => a.id === id);
+  const agentName = (id) => agentById(id)?.name ?? id ?? "agent";
+  const taskById = (id) => tasks.find((t) => t.id === id);
+
+  const m = deriveMetrics(state);
+  const totalTasks = tasks.length || 1;
+  const completed = tasks.filter((t) => t.status === TaskStatus.completed).length;
+  const failed = tasks.filter((t) => t.status === TaskStatus.failed).length;
+  const pendingApprovals = approvals.filter((a) => a.status === ApprovalStatus.pending).length;
+  const blockedAgents = agents.filter((a) => a.status === AgentStatus.blocked).length;
+  const runningTasks = tasks.filter((t) => t.status === TaskStatus.running).length;
+
+  // --- gamified company vitals ---
+  const healthDelta = completed * 6 - failed * 11 - pendingApprovals * 4 - blockedAgents * 7;
+  const healthScore = clamp(Math.round(64 + healthDelta), 5, 100);
+  const automationLevel = clamp(Math.round((completed / totalTasks) * 100), 0, 100);
+  const tierThresholds = [
+    [0, "Seed"], [1, "Operational"], [3, "Scaling"], [5, "Autonomous"]
+  ];
+  const tier = tierThresholds.reduce((acc, [n, label]) => (completed >= n ? label : acc), "Seed");
+
+  // --- KPI cards (score-like deltas + sparkline) ---
+  const baseKpis = [
+    { id: "health", label: "Company Health", value: healthScore, unit: "", delta: healthDelta, target: healthScore },
+    { id: "automation", label: "Automation Level", value: automationLevel, unit: "%", delta: completed * 8, target: Math.max(automationLevel, 8) },
+    { id: "throughput", label: "Missions Cleared", value: completed, unit: "", delta: completed, target: Math.max(completed, 3) },
+    { id: "approvals", label: "Approval Queue", value: pendingApprovals, unit: "", delta: -pendingApprovals, target: Math.max(pendingApprovals, 2) }
+  ];
+  const kpis = baseKpis.map((k) => ({
+    ...k,
+    trend: k.delta > 0 ? "up" : k.delta < 0 ? "down" : "flat",
+    spark: sparkSeries(k.id, k.target)
+  }));
+  // Domain KPIs carried from the seeded edition (manufacturing).
+  const domainKpis = (m.manufacturingKpis ?? []).map((k, i) => ({
+    id: `dom_${i}`, label: k.label, value: k.value, delta: k.trend, trend: "flat",
+    spark: sparkSeries(`dom_${k.label}`, 6 + i * 2)
+  }));
+
+  // --- missions (tasks as mission cards) ---
+  const missions = tasks.map((t) => {
+    const lane = laneForCategory(t.category);
+    const status = t.status ?? "queued";
+    return {
+      id: t.id, taskId: t.id, title: t.title,
+      lane: lane.id, laneLabel: lane.label, laneGlyph: lane.glyph,
+      agentId: t.assignedAgentId ?? t.ownerAgentId,
+      agent: agentName(t.assignedAgentId ?? t.ownerAgentId),
+      status, level: MISSION_LEVEL[status] ?? "info",
+      progress: MISSION_PROGRESS[status] ?? 8,
+      priority: t.priority ?? "normal",
+      requiresApproval: !!t.requiresApproval,
+      reward: lane.reward,
+      summary: t.output || t.expectedOutput || "",
+      runnable: status === "queued" || status === "running"
+    };
+  });
+
+  // --- agents as "employees" with energy/focus ---
+  const agentCards = agents.map((a) => {
+    const lane = laneForAgent(a, tasks);
+    const status = a.status ?? "idle";
+    const active = missions.find((mm) => mm.agentId === a.id && (mm.status === "running" || mm.status === "waiting_approval"));
+    const energy = clamp((AGENT_ENERGY[status] ?? 60) + Math.round((seedHash(a.id) - 0.5) * 10), 5, 100);
+    return {
+      id: a.id, name: a.name, role: a.role ?? "", channel: a.channel ?? "",
+      lane: lane.id, laneLabel: lane.label,
+      status, energy,
+      focus: status === "running" ? "집중 실행" : status === "blocked" ? "정책 차단" : status === "disabled" ? "비활성" : "대기·준비",
+      activeMission: active?.title ?? null,
+      capabilities: a.capabilities ?? [],
+      kpi: a.kpi ?? ""
+    };
+  });
+
+  // --- topology lanes (mini-map) ---
+  const lanes = WORKSTREAM_LANES.map((lane) => {
+    const laneMissions = missions.filter((mm) => mm.lane === lane.id);
+    const laneAgents = agentCards.filter((a) => a.lane === lane.id);
+    const active = laneMissions.filter((mm) => mm.status === "running" || mm.status === "waiting_approval").length;
+    const laneDone = laneMissions.filter((mm) => mm.status === "completed").length;
+    const laneFailed = laneMissions.filter((mm) => mm.status === "failed").length;
+    return {
+      id: lane.id, label: lane.label, glyph: lane.glyph,
+      agentId: laneAgents[0]?.id ?? null,
+      agentName: laneAgents[0]?.name ?? "—",
+      missionCount: laneMissions.length,
+      load: clamp(Math.round((active / Math.max(1, laneMissions.length)) * 100), 0, 100),
+      status: laneFailed ? "error" : active ? "running" : laneDone === laneMissions.length && laneMissions.length ? "success" : "idle",
+      done: laneDone, total: laneMissions.length
+    };
+  });
+
+  // --- daily objectives ---
+  const objCount = (cat) => tasks.filter((t) => t.category === cat);
+  const objDone = (cat) => objCount(cat).filter((t) => t.status === TaskStatus.completed).length;
+  const objectives = [
+    { id: "obj_prod", label: "생산 납기 리스크 미션 처리", done: objDone("production"), total: Math.max(1, objCount("production").length) },
+    { id: "obj_sales", label: "영업 후속 메시지 승인 통과", done: approvals.filter((a) => a.status === ApprovalStatus.approved).length, total: Math.max(1, objCount("sales").length) },
+    { id: "obj_scope3", label: "Scope 3 협력사 데이터 확보", done: objDone("scope3"), total: Math.max(1, objCount("scope3").length) },
+    { id: "obj_zero", label: "인시던트 없이 운영 유지", done: failed === 0 ? 1 : 0, total: 1 }
+  ].map((o) => ({ ...o, status: o.done >= o.total ? "done" : o.done > 0 ? "progress" : "open" }));
+
+  // --- alerts (incident / approval) ---
+  const alerts = [];
+  for (const a of approvals.filter((x) => x.status === ApprovalStatus.pending)) {
+    alerts.push({ id: `al_${a.id}`, kind: "approval", severity: "warn",
+      title: a.title || "승인 필요", message: a.summary || a.reason || "외부 영향 작업 승인 대기",
+      approvalId: a.id, taskId: a.taskId });
+  }
+  for (const t of tasks.filter((x) => x.status === TaskStatus.failed)) {
+    alerts.push({ id: `al_${t.id}`, kind: "incident", severity: "high",
+      title: `${t.title} 실패`, message: "미션이 반려/실패 처리됨. 재실행 또는 재검토 필요.", taskId: t.id });
+  }
+  for (const a of agents.filter((x) => x.status === AgentStatus.blocked)) {
+    alerts.push({ id: `al_${a.id}`, kind: "incident", severity: "warn",
+      title: `${a.name} 정책 차단`, message: "권한 부족으로 실행이 차단됨.", agentId: a.id });
+  }
+
+  // --- achievement badges (unlock-style) ---
+  const anyApproved = approvals.some((a) => a.status === ApprovalStatus.approved);
+  const scope3Done = tasks.some((t) => t.category === "scope3" && t.status === TaskStatus.completed);
+  const achievements = [
+    { id: "first_run", icon: "⚡", label: "First Dispatch", desc: "첫 미션 실행", unlocked: taskRuns.length > 0 },
+    { id: "approval_cleared", icon: "✓", label: "Cleared Gate", desc: "승인 게이트 통과", unlocked: anyApproved },
+    { id: "zero_incident", icon: "❖", label: "Zero Incident", desc: "실패 0건 유지", unlocked: failed === 0 && taskRuns.length > 0 },
+    { id: "scope3_closer", icon: "♻", label: "Scope 3 Closer", desc: "탄소 데이터 미션 완료", unlocked: scope3Done },
+    { id: "full_auto", icon: "★", label: "Full Automation", desc: "모든 미션 완료", unlocked: completed >= tasks.length && tasks.length > 0 }
+  ];
+
+  // --- narrative operations stream (human-readable beats) ---
+  const beats = [];
+  for (const run of taskRuns) {
+    const task = taskById(run.taskId);
+    const lane = laneForCategory(task?.category);
+    beats.push({
+      id: `${run.id}:beat-start`, ts: run.startedAt, kind: "mission", level: "running",
+      lane: lane.id, laneLabel: lane.label, actor: agentName(run.agentId),
+      title: `${agentName(run.agentId)} · ${task?.title ?? "미션"} 착수`,
+      detail: `${lane.label} 라인에서 데이터를 점검하고 실행을 시작했습니다.`, reward: null
+    });
+    if (run.resultSummary) {
+      const lvl = run.status === "failed" ? "error" : run.status === "waiting_approval" ? "pending" : "success";
+      beats.push({
+        id: `${run.id}:beat-report`, ts: run.completedAt ?? run.startedAt,
+        kind: lvl === "pending" ? "approval" : "report", level: lvl,
+        lane: lane.id, laneLabel: lane.label, actor: agentName(run.agentId),
+        title: lvl === "pending" ? `${agentName(run.agentId)} · 승인 요청 보고` : `${agentName(run.agentId)} · 결과 보고`,
+        detail: run.resultSummary,
+        reward: lvl === "success" ? lane.reward : null
+      });
+    }
+  }
+  for (const a of approvals) {
+    if (a.decidedAt) {
+      const ok = a.status === ApprovalStatus.approved;
+      beats.push({
+        id: `${a.id}:beat-decided`, ts: a.decidedAt, kind: "decision", level: ok ? "success" : "error",
+        lane: laneForCategory(taskById(a.taskId)?.category).id, laneLabel: laneForCategory(taskById(a.taskId)?.category).label,
+        actor: a.decidedByUserId || "operator",
+        title: `결재 ${ok ? "승인" : "반려"} · ${a.title ?? ""}`,
+        detail: ok ? "운영자가 외부 영향 작업을 승인했습니다." : "운영자가 작업을 반려했습니다.",
+        reward: null
+      });
+    }
+  }
+  // System genesis beat from the seed audit row, so a fresh company isn't empty.
+  const seedAudit = (state.auditEvents ?? []).find((e) => e.action === "demo.seed");
+  if (seedAudit) {
+    beats.push({
+      id: `${seedAudit.id}:beat`, ts: seedAudit.ts ?? seedAudit.createdAt, kind: "system", level: "info",
+      lane: "control", laneLabel: "관제", actor: "Mission Control",
+      title: "회사 운영 시작", detail: "에이전트 조직이 배치되고 미션 보드가 준비되었습니다.", reward: null
+    });
+  }
+  const stream = beats
+    .filter((b) => b.ts)
+    .sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0))
+    .slice(0, streamLimit);
+
+  const headline = stream[0]
+    ? { title: stream[0].title, detail: stream[0].detail, level: stream[0].level, ts: stream[0].ts }
+    : { title: "운영 대기 중", detail: "Seed로 회사를 구성하거나 미션을 실행하세요.", level: "info", ts: null };
+
+  return {
+    workspaceId: wsId,
+    generatedAt: nowIso(),
+    company: {
+      name: state.tenant?.name ?? "Company",
+      edition: state.tenant?.edition ?? state.workspace?.editionId ?? "platform",
+      workspace: state.workspace?.name ?? "Workspace",
+      healthScore, healthDelta, automationLevel, tier,
+      activeAgents: m.activeAgents, runningTasks, completed, failed, pendingApprovals
+    },
+    headline,
+    kpis, domainKpis,
+    missions, agents: agentCards, lanes,
+    pipeline: {
+      stages: [
+        { id: "queued", label: "Queued", count: tasks.filter((t) => t.status === "queued").length },
+        { id: "running", label: "Running", count: runningTasks },
+        { id: "waiting_approval", label: "Approval", count: tasks.filter((t) => t.status === "waiting_approval").length },
+        { id: "completed", label: "Done", count: completed }
+      ]
+    },
+    objectives, alerts, achievements, stream,
+    counts: { missions: missions.length, agents: agentCards.length, alerts: alerts.length, stream: stream.length }
+  };
+}
+
 // --- backward-compatible wrappers (used by older callers / /state) ----------
 
 export function runTask(state, taskId, requestedBy = "operator", options = {}) {

@@ -9,7 +9,8 @@ import {
   executeCommand,
   deriveMetrics,
   projectOverview,
-  projectLiveLog
+  projectLiveLog,
+  projectWorkstream
 } from "../packages/runtime/src/index.mjs";
 import { CommandType } from "../packages/contracts/src/index.mjs";
 import { Decision, evaluateTaskRun } from "../packages/policy/src/index.mjs";
@@ -97,6 +98,29 @@ const beforeLive = projectLiveLog(await store.load(), "default").entries.length;
 await executeCommand({ store, office, command: { type: CommandType.taskRun, taskId: "task_production_risk", requestedBy: "validation" } });
 const afterLive = projectLiveLog(await store.load(), "default").entries.length;
 assert.ok(afterLive > beforeLive, "live log should grow after a task run");
+
+// 13) Workstream projection (AI company simulator surface).
+const ws = projectWorkstream(state, "default");
+assert.ok(ws.company && typeof ws.company.healthScore === "number", "workstream exposes company health");
+assert.ok(ws.company.healthScore >= 0 && ws.company.healthScore <= 100, "health score is bounded 0..100");
+assert.ok(ws.missions.length >= 3, "workstream surfaces mission cards");
+assert.ok(ws.agents.length >= 3 && ws.agents.every((a) => typeof a.energy === "number"), "agents carry energy");
+assert.ok(ws.lanes.length >= 3, "workstream maps business lanes");
+assert.ok(ws.kpis.length >= 3 && ws.kpis.every((k) => Array.isArray(k.spark)), "kpis carry sparklines");
+assert.ok(ws.objectives.length >= 3, "daily objectives present");
+assert.ok(ws.achievements.some((a) => a.unlocked), "at least one achievement unlocked after activity");
+assert.ok(ws.stream.length > 0, "operations stream has narrative beats");
+for (let i = 1; i < ws.stream.length; i += 1) {
+  assert.ok(ws.stream[i - 1].ts >= ws.stream[i].ts, "operations stream is newest-first ordered");
+}
+// Same input -> same projection (pure / replayable for the stateless cloud demo).
+const wsAgain = projectWorkstream(state, "default");
+assert.equal(JSON.stringify(ws.missions), JSON.stringify(wsAgain.missions), "workstream missions are deterministic");
+// Running another task must grow the stream (simulator shows new activity).
+const beforeStream = projectWorkstream(await store.load(), "default").stream.length;
+await executeCommand({ store, office, command: { type: CommandType.taskRun, taskId: "task_production_risk", requestedBy: "validation" } });
+const afterStream = projectWorkstream(await store.load(), "default").stream.length;
+assert.ok(afterStream >= beforeStream, "operations stream reflects new activity");
 
 console.log(JSON.stringify({
   ok: true,

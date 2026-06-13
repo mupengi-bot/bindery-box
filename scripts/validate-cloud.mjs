@@ -81,6 +81,18 @@ assert.ok(r.body.entries.length >= liveBefore, "live-log reflects new activity")
 r = await call("GET", "/workspaces/default/live-log");
 assert.equal(r.status, 200, "bare live-log route 200");
 
+// 10b) Workstream projection (AI company simulator) reachable through cloud handler.
+r = await call("GET", "/api/workspaces/default/workstream");
+assert.equal(r.status, 200, "workstream 200");
+assert.ok(r.body.company && typeof r.body.company.healthScore === "number", "workstream exposes company health");
+assert.ok(r.body.missions.length >= 3, "workstream surfaces missions");
+assert.ok(r.body.agents.every((a) => typeof a.energy === "number"), "workstream agents carry energy");
+assert.ok(r.body.stream.length > 0, "workstream has narrative beats after activity");
+assert.ok(r.body.kpis.every((k) => Array.isArray(k.spark)), "workstream kpis carry sparklines");
+// Bare route parity (Vercel rewrite).
+r = await call("GET", "/workspaces/default/workstream");
+assert.equal(r.status, 200, "bare workstream route 200");
+
 // 11) Unknown route -> 404 (defensive).
 r = await call("GET", "/api/nope");
 assert.equal(r.status, 404, "unknown route 404");

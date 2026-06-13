@@ -18,7 +18,8 @@ import {
   deriveMetrics,
   executeCommand,
   projectOverview,
-  projectLiveLog
+  projectLiveLog,
+  projectWorkstream
 } from "../packages/runtime/src/index.mjs";
 import { listConnectors, buildCapabilityMap } from "../packages/connectors/src/index.mjs";
 import { createKnowledgeBase, searchKnowledge } from "../packages/knowledge/src/index.mjs";
@@ -95,6 +96,10 @@ export async function handleRequest({
   const wsLiveLogMatch = route.match(/^\/workspaces\/([^/]+)\/live-log$/);
   if (method === "GET" && wsLiveLogMatch) {
     return { status: 200, body: projectLiveLog(await store.load(), wsLiveLogMatch[1]) };
+  }
+  const wsWorkstreamMatch = route.match(/^\/workspaces\/([^/]+)\/workstream$/);
+  if (method === "GET" && wsWorkstreamMatch) {
+    return { status: 200, body: projectWorkstream(await store.load(), wsWorkstreamMatch[1]) };
   }
 
   // --- connector hub ---

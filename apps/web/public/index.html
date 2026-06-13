@@ -2,126 +2,124 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BINDERY BOX · Control Room</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>BINDERY BOX · Company Simulator</title>
+  <meta name="color-scheme" content="dark" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
-  <div class="app">
+<body data-panel="stream">
+  <div class="sim" id="sim">
+
     <!-- ── Command bar ───────────────────────────────────────────────── -->
-    <header class="commandbar">
+    <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">◧</span>
         <div class="brand-text">
           <strong>BINDERY BOX</strong>
-          <small id="brand-sub">Manufacturing Control Room</small>
+          <small id="brand-sub">Company Simulator</small>
         </div>
+        <span class="tier-chip" id="tier-chip" title="회사 운영 단계">Seed</span>
       </div>
 
-      <div class="command-search">
+      <div class="topbar-search">
         <span class="search-icon" aria-hidden="true">⌕</span>
-        <input id="search" type="search" placeholder="에이전트·업무·지식 검색  ( / )" autocomplete="off" spellcheck="false" />
+        <input id="search" type="search" placeholder="에이전트·미션·이벤트 검색  ( / )"
+               autocomplete="off" spellcheck="false" aria-label="검색" />
         <kbd>/</kbd>
       </div>
 
-      <div class="command-actions">
-        <div class="conn-state" id="conn-state" title="API 연결 상태">
-          <span class="dot"></span><span id="conn-label">connecting…</span>
+      <div class="topbar-actions">
+        <div class="conn" id="conn" title="API 연결 상태">
+          <span class="conn-dot"></span><span id="conn-label">connecting…</span>
         </div>
-        <button class="qa" id="seed" title="데모 상태 재시드">⟲ Seed</button>
-        <button class="qa primary" id="refresh" title="전체 새로고침">↻ Refresh</button>
+        <button class="ghost-btn drawer-only" id="insp-toggle" title="미션 인스펙터">◑ Inspector</button>
+        <button class="ghost-btn" id="debug-toggle" title="기술 로그 드로어 (raw)">⌗ Debug</button>
+        <button class="ghost-btn" id="seed" title="회사 데모 상태 재시드">⟲ Seed</button>
+        <button class="ghost-btn primary" id="refresh" title="전체 새로고침">↻ Refresh</button>
       </div>
     </header>
 
-    <!-- ── Workspace shell: sidebar · board · inspector ──────────────── -->
-    <div class="shell">
-      <!-- Left: organization -->
-      <aside class="sidebar" id="sidebar">
-        <section class="org-head">
-          <div class="org-avatar" id="org-avatar">MF</div>
-          <div class="org-meta">
-            <strong id="org-name">MUFI Manufacturing</strong>
-            <small id="org-edition">manufacturing edition</small>
-          </div>
+    <!-- ── Cockpit ───────────────────────────────────────────────────── -->
+    <div class="cockpit">
+
+      <!-- LEFT · Company map -->
+      <aside class="col col-map" id="col-map" aria-label="Company map">
+        <section class="panel vitals" id="vitals"></section>
+        <section class="panel">
+          <header class="panel-head"><h3>Agent Topology</h3><span class="panel-sub" id="topo-sub">—</span></header>
+          <div class="topo" id="topo"></div>
         </section>
-
-        <nav class="ws-switch">
-          <span class="rail-label">Workspaces</span>
-          <div id="ws-list" class="ws-list"></div>
-        </nav>
-
-        <section class="org-section">
-          <div class="rail-label-row">
-            <span class="rail-label">Agent Org</span>
-            <span class="rail-count" id="agent-count">0</span>
-          </div>
-          <div id="agents" class="agent-list"></div>
+        <section class="panel">
+          <header class="panel-head"><h3>Operations Lanes</h3></header>
+          <div class="lanemap" id="lanemap"></div>
         </section>
-
-        <section class="org-section">
-          <div class="rail-label-row">
-            <span class="rail-label">Connector Hub</span>
-            <span class="rail-count" id="connector-count">0</span>
-          </div>
-          <div id="connectors" class="connector-list"></div>
+        <section class="panel grow">
+          <header class="panel-head"><h3>Agent Roster</h3><span class="panel-sub" id="roster-sub">0</span></header>
+          <div class="roster" id="roster"></div>
         </section>
       </aside>
 
-      <!-- Center: operations board -->
-      <main class="board" id="board">
-        <div class="board-head">
-          <div>
-            <h2>Operations Board</h2>
-            <p class="board-sub">업무 큐 · 실행 · 승인 대기 · 완료 흐름</p>
-          </div>
-          <div class="kpi-strip" id="kpi-strip"></div>
-        </div>
+      <!-- CENTER · Operations stream -->
+      <main class="col col-stream" id="col-stream" aria-label="Operations stream">
+        <section class="hero" id="hero"></section>
 
-        <div class="flow-rail" id="flow-rail"></div>
+        <section class="pipeline" id="pipeline"></section>
 
-        <div class="lanes" id="lanes"></div>
+        <section class="kpi-grid" id="kpis"></section>
+
+        <section class="panel objectives-panel">
+          <header class="panel-head">
+            <h3>Daily Objectives</h3>
+            <span class="panel-sub" id="obj-sub">0 / 0</span>
+          </header>
+          <div class="objectives" id="objectives"></div>
+        </section>
+
+        <section class="panel stream-panel grow">
+          <header class="panel-head">
+            <h3>Operations Stream</h3>
+            <span class="panel-sub">에이전트 업무 · 보고 · 결재 내러티브</span>
+          </header>
+          <div class="stream" id="stream"></div>
+        </section>
       </main>
 
-      <!-- Right: inspector -->
-      <aside class="inspector" id="inspector">
-        <section class="insp-card">
-          <header class="insp-head">
-            <h3>Approval Center</h3>
-            <span class="insp-badge" id="approval-badge">0</span>
-          </header>
-          <div id="approvals" class="approval-list"></div>
+      <!-- RIGHT · Mission inspector -->
+      <aside class="col col-inspector" id="col-inspector" aria-label="Mission inspector">
+        <button class="drawer-close drawer-only" id="insp-close" aria-label="닫기">✕</button>
+
+        <section class="panel alerts-panel">
+          <header class="panel-head"><h3>Alerts</h3><span class="badge warn" id="alert-badge">0</span></header>
+          <div class="alerts" id="alerts"></div>
         </section>
 
-        <section class="insp-card">
-          <header class="insp-head">
-            <h3>Knowledge Graph</h3>
-            <span class="insp-badge soft" id="knowledge-badge">0</span>
-          </header>
-          <div class="graph-mini" id="graph-mini"></div>
-          <div id="knowledge" class="relation-list"></div>
+        <section class="panel">
+          <header class="panel-head"><h3>Mission Board</h3><span class="panel-sub" id="mission-sub">0</span></header>
+          <div class="missions" id="missions"></div>
         </section>
 
-        <section class="insp-card">
-          <header class="insp-head">
-            <h3>Office Activity</h3>
-            <span class="insp-badge soft">Mattermost</span>
-          </header>
-          <div id="office" class="office-feed"></div>
+        <section class="panel">
+          <header class="panel-head"><h3>Achievements</h3><span class="panel-sub" id="ach-sub">0</span></header>
+          <div class="achievements" id="achievements"></div>
+        </section>
+
+        <section class="panel grow">
+          <header class="panel-head"><h3>Knowledge Graph</h3><span class="panel-sub" id="kg-sub">0</span></header>
+          <div class="kg-mini" id="kg-mini"></div>
         </section>
       </aside>
     </div>
 
-    <!-- ── Live Operations Log dock ──────────────────────────────────── -->
-    <footer class="live-dock" id="live-dock">
-      <div class="live-head">
-        <div class="live-title">
+    <!-- ── Debug / raw log drawer (demoted technical surface) ─────────── -->
+    <section class="debug-drawer" id="debug-drawer" aria-label="Technical log">
+      <header class="debug-head">
+        <div class="debug-title">
           <span class="pulse" id="live-pulse" aria-hidden="true"></span>
-          <h3>Live Operations Log</h3>
-          <span class="live-meta" id="live-meta">—</span>
+          <h3>Debug · Raw Live Log</h3>
+          <span class="debug-meta" id="live-meta">—</span>
         </div>
-        <div class="live-controls">
-          <div class="live-filters" id="live-filters">
+        <div class="debug-controls">
+          <div class="lf-row" id="live-filters">
             <button class="lf active" data-src="all">all</button>
             <button class="lf" data-src="agent">agent</button>
             <button class="lf" data-src="runtime">runtime</button>
@@ -131,11 +129,20 @@
           <button class="auto-toggle active" id="auto-toggle" title="2.5초 자동 새로고침">
             <span class="auto-dot"></span><span id="auto-label">Auto 2.5s</span>
           </button>
-          <button class="qa" id="live-refresh" title="로그 수동 새로고침">↻</button>
+          <button class="ghost-btn" id="live-refresh" title="로그 수동 새로고침">↻</button>
+          <button class="ghost-btn" id="debug-close" title="드로어 닫기">✕</button>
         </div>
-      </div>
-      <div class="live-body" id="live-log"></div>
-    </footer>
+      </header>
+      <div class="debug-body" id="live-log"></div>
+    </section>
+
+    <!-- ── Mobile bottom nav ─────────────────────────────────────────── -->
+    <nav class="bottom-nav" aria-label="패널 전환">
+      <button class="bn" data-nav="map"><span>◫</span>Map</button>
+      <button class="bn active" data-nav="stream"><span>≋</span>Stream</button>
+      <button class="bn" data-nav="inspector"><span>◑</span>Missions</button>
+      <button class="bn" data-nav="debug"><span>⌗</span>Debug</button>
+    </nav>
   </div>
 
   <script src="config.js"></script>
