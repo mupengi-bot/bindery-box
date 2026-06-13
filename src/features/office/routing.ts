@@ -2,16 +2,13 @@
 // workstream state into *where an agent goes*. Both the 3D scene and the
 // Mission Control minimap import this so the two surfaces always agree.
 //
-// An agent's destination is derived purely from its live status and the mission
-// it owns:
-//   • meeting  — its active mission is waiting on a human decision → walk to the
-//                central meeting room and take an approval-table seat.
-//   • huddle   — it is running work → leave the desk for the in-room huddle spot.
-//   • desk     — idle / blocked / disabled → stay at the workstation.
-// The waypoint polyline routes the avatar out through the room door so it never
-// clips through a wall.
+// Physical navigation is operator-commanded only. Runtime status may change an
+// agent's color, KPI panel, log row, or desk activity, but it must not make the
+// avatar walk away by itself. This keeps the RTS office legible: people move only
+// after a floor/right-click/zone move command is issued. Automatic work routing
+// belongs in logs and HUD state, not in avatar locomotion.
 
-import { ROOMS, meetingSeat, type Vec2 } from "./scene/sceneConfig";
+import { type Vec2 } from "./scene/sceneConfig";
 import type { Mission, WorkstreamAgent } from "./types";
 
 export type Destination = "desk" | "huddle" | "meeting";
@@ -30,9 +27,9 @@ export interface AgentRoute {
 }
 
 const DEST_NOTE: Record<Destination, string> = {
-  desk: "데스크",
-  huddle: "협업 허들",
-  meeting: "회의실 · 승인",
+  desk: "데스크 · 대기/업무",
+  huddle: "수동 이동",
+  meeting: "수동 이동",
 };
 
 /** The mission an agent is actively working, if any. */
@@ -45,38 +42,24 @@ export function activeMissionFor(agent: WorkstreamAgent, missions: Mission[]): M
   );
 }
 
-function pickDestination(agent: WorkstreamAgent, mission: Mission | null): Destination {
-  if (agent.status === "blocked" || agent.status === "disabled") return "desk";
-  if (mission && (mission.status === "waiting_approval" || mission.requiresApproval)) return "meeting";
-  if (agent.status === "running") return "huddle";
+function pickDestination(): Destination {
   return "desk";
 }
 
 /**
- * Build the route for a single agent.
- * @param seat        the agent's desk seat [x, z]
- * @param meetingIdx  this agent's index among meeting-bound agents (seat ring)
- * @param meetingTot  total meeting-bound agents (ring size)
+ * Build the route for a single agent. Base projection never moves avatars by
+ * status; manual move commands are layered on top by OfficeScene.moveTargets.
  */
 export function deriveRoute(
   agent: WorkstreamAgent,
   seat: Vec2,
-  missions: Mission[],
-  meetingIdx: number,
-  meetingTot: number,
+  _missions: Mission[],
+  _meetingIdx: number,
+  _meetingTot: number,
 ): AgentRoute {
-  const mission = activeMissionFor(agent, missions);
-  const destination = pickDestination(agent, mission);
-  const room = ROOMS[agent.lane];
+  const destination = pickDestination();
 
-  let waypoints: Vec2[];
-  if (destination === "meeting") {
-    waypoints = [seat, room.huddle, room.door, meetingSeat(meetingIdx, meetingTot)];
-  } else if (destination === "huddle") {
-    waypoints = [seat, room.huddle];
-  } else {
-    waypoints = [seat];
-  }
+  const waypoints: Vec2[] = [seat];
 
   return {
     agentId: agent.id,
@@ -97,16 +80,9 @@ export function deriveRoutes(
   seatOf: (agentId: string) => Vec2,
   missions: Mission[],
 ): Map<string, AgentRoute> {
-  const meetingBound = agents.filter((a) => {
-    const m = activeMissionFor(a, missions);
-    return pickDestination(a, m) === "meeting";
-  });
-  const meetingIndex = new Map(meetingBound.map((a, i) => [a.id, i]));
-  const total = meetingBound.length;
-
   const out = new Map<string, AgentRoute>();
   for (const a of agents) {
-    out.set(a.id, deriveRoute(a, seatOf(a.id), missions, meetingIndex.get(a.id) ?? 0, total));
+    out.set(a.id, deriveRoute(a, seatOf(a.id), missions, 0, agents.length));
   }
   return out;
 }

@@ -6,11 +6,12 @@ BINDERY BOX uses the Claw3D office as an RTS-like operating board: the camera is
 
 1. **Fixed camera first** — the default view is an isometric office board. Free orbit is not the primary interaction.
 2. **Select unit, then command** — clicking an agent selects that person. Clicking the floor creates `agent.move.requested`, records a target, and projects the avatar there.
-3. **Zones are actionable** — every department room has a visible `＋ 업무 요청` station. Clicking a station opens the Goal Composer filtered to that lane.
-4. **Zone requests create real tasks** — typed zone requests go through `task.create`, produce `task.created`, and surface as runnable missions.
-5. **People expose role prompts** — selecting a person opens a card with role, persona, capabilities, KPI, active mission, and public-safe prompt text.
-6. **People can be created from templates** — the composer exposes role templates, prompt previews, and safe default permissions.
-7. **Commands remain projections** — movement, work requests, and hires go through `Command -> Policy Check -> Runtime Action -> Event(s) -> Persist -> Projection`.
+3. **No autonomous walking** — runtime status (`running`, `waiting_approval`, `blocked`) may change colors, panels, logs, and desk activity, but it must not move a person. Physical movement only happens from an explicit operator coordinate command.
+4. **Zones are actionable** — every department room has a visible `＋ 업무 요청` station. Clicking a station opens the Goal Composer filtered to that lane.
+5. **Zone requests create real tasks** — typed zone requests go through `task.create`, produce `task.created`, and surface as runnable missions.
+6. **People expose role prompts** — selecting a person opens a card with role, persona, capabilities, KPI, active mission, and public-safe prompt text.
+7. **People can be created from templates** — the composer exposes role templates, prompt previews, and safe default permissions.
+8. **Commands remain projections** — movement, work requests, and hires go through `Command -> Policy Check -> Runtime Action -> Event(s) -> Persist -> Projection`.
 
 ## Interaction flow
 
