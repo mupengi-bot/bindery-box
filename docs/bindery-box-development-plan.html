@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BINDERY BOX / MUFI Box 개발계획서</title>
+<style>
+  :root{
+    --bg:#090b10; --panel:#111827; --panel2:#0f172a; --ink:#e5e7eb; --muted:#9ca3af;
+    --line:#253247; --blue:#60a5fa; --cyan:#22d3ee; --green:#34d399; --yellow:#fbbf24;
+    --red:#fb7185; --purple:#a78bfa; --white:#fff; --shadow:0 24px 80px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 15% 0,#172554 0,#090b10 34%,#05070b 100%);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Pretendard,Apple SD Gothic Neo,Noto Sans KR,sans-serif;line-height:1.58}
+  .wrap{max-width:1180px;margin:0 auto;padding:40px 22px 80px}.hero{min-height:640px;display:grid;grid-template-columns:1.04fr .96fr;gap:28px;align-items:center}.badge{display:inline-flex;gap:8px;align-items:center;border:1px solid rgba(96,165,250,.4);background:rgba(96,165,250,.08);padding:7px 12px;border-radius:999px;color:#bfdbfe;font-size:13px;font-weight:700}.title{font-size:64px;line-height:.95;margin:24px 0 16px;letter-spacing:-3px}.title span{background:linear-gradient(90deg,var(--cyan),var(--blue),var(--purple));-webkit-background-clip:text;color:transparent}.subtitle{font-size:22px;color:#dbeafe;max-width:760px}.heroCard{background:linear-gradient(145deg,rgba(17,24,39,.94),rgba(15,23,42,.86));border:1px solid rgba(148,163,184,.22);border-radius:28px;padding:26px;box-shadow:var(--shadow)}
+  .grid{display:grid;gap:18px}.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.card{background:rgba(17,24,39,.82);border:1px solid rgba(148,163,184,.18);border-radius:22px;padding:22px;box-shadow:0 14px 44px rgba(0,0,0,.2)}.card h3{margin:0 0 10px;font-size:20px}.card p{color:var(--muted);margin:.35rem 0}.kpi{font-size:34px;font-weight:900;letter-spacing:-1px;color:white}.kpi small{font-size:14px;color:var(--muted);font-weight:700}.section{margin:70px 0}.section h2{font-size:38px;line-height:1.05;margin:0 0 16px;letter-spacing:-1.3px}.lead{font-size:18px;color:#cbd5e1;max-width:950px}.pill{display:inline-flex;align-items:center;margin:4px 6px 4px 0;padding:6px 10px;border-radius:999px;background:#172033;border:1px solid #2b3b55;color:#c7d2fe;font-size:13px;font-weight:700}.table{width:100%;border-collapse:collapse;overflow:hidden;border-radius:16px;border:1px solid var(--line)}.table th,.table td{padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top}.table th{background:#0b1220;color:#bfdbfe;text-align:left}.table tr:last-child td{border-bottom:0}.table td{color:#d1d5db}.muted{color:var(--muted)}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.code{white-space:pre-wrap;background:#050b14;border:1px solid #1e293b;border-radius:18px;padding:18px;overflow:auto;color:#dbeafe}.accent{color:var(--cyan)}.warn{color:var(--yellow)}.ok{color:var(--green)}.danger{color:var(--red)}.svgbox{background:linear-gradient(180deg,#0b1220,#090e18);border:1px solid rgba(148,163,184,.20);border-radius:24px;padding:14px;overflow:auto}.timeline{position:relative;margin-top:20px}.timeitem{display:grid;grid-template-columns:120px 1fr;gap:16px;margin:12px 0}.week{font-weight:900;color:#93c5fd}.bar{border-left:3px solid #2563eb;padding-left:18px}.bar h4{margin:0 0 4px}.bar p{margin:0;color:var(--muted)}.printBreak{break-before:page}.footer{margin-top:70px;color:#64748b;font-size:13px;text-align:center}.logoMark{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,var(--cyan),var(--blue),var(--purple));box-shadow:0 12px 36px rgba(96,165,250,.34)}
+  @media(max-width:900px){.hero,.g2,.g3,.g4{grid-template-columns:1fr}.title{font-size:46px}.wrap{padding:26px 14px 60px}}
+  @media print{body{background:white;color:#111827}.wrap{max-width:none}.card,.heroCard,.svgbox{box-shadow:none;background:white;color:#111827;border-color:#d1d5db}.muted,.card p,.lead{color:#374151}.title span{color:#111827;background:none}.section{break-inside:avoid}.badge,.pill{color:#111827;background:#f3f4f6}.code{background:#f9fafb;color:#111827}.table th{background:#eef2ff;color:#111827}.table td{color:#111827}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="hero">
+    <div>
+      <div class="badge"><span class="logoMark"></span> Product Development Plan · 2026.06.13 · v0.1</div>
+      <h1 class="title"><span>BINDERY BOX</span><br/>/ MUFI Box</h1>
+      <p class="subtitle">Mattermost Office + Mission Control Web + Local Agent Runtime + Desktop Launcher로 구현하는 <b>AI Company-in-a-Box</b> 공식 서비스 개발계획서.</p>
+      <p class="lead">목표는 “CLI 데모”가 아니라 고객이 눈으로 이해하는 <b>소규모 AI 회사 운영 플랫폼</b>이다. 에이전트는 직원처럼 보이고, 업무는 티켓/승인/로그/지표로 남으며, 고객 데이터는 기본적으로 로컬·사내망에 머문다.</p>
+      <div style="margin-top:24px">
+        <span class="pill">Official Service Repo</span><span class="pill">Web Service</span><span class="pill">Desktop Launcher</span><span class="pill">On-Prem First</span><span class="pill">Manufacturing Vertical</span>
+      </div>
+    </div>
+    <div class="heroCard">
+      <h3 style="margin-top:0">핵심 결론</h3>
+      <div class="grid g2">
+        <div class="card"><div class="kpi">12주</div><p>MVP: 웹 대시보드 + Mattermost + 로컬 런타임</p></div>
+        <div class="card"><div class="kpi">5+3</div><p>일반 에이전트 5종 + 제조업 특화 3종</p></div>
+        <div class="card"><div class="kpi">30분</div><p>목표 설치 완료 시간</p></div>
+        <div class="card"><div class="kpi">70%+</div><p>승인 추적 포함 업무 완료율 목표</p></div>
+      </div>
+      <p class="muted">권장 제품화 순서: Docker/Web MVP → Tauri Desktop Launcher → 고객사 화이트라벨 패키지 → 관리형/온프레미스 이중 배포.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>1. 제품 구성 강화안</h2>
+    <p class="lead">기존 “여러 봇이 돌아간다”를 넘어서, 고객에게는 <b>사무실·관리실·직원·기억·감사체계</b>가 한 번에 설치되는 공식 서비스로 보여줘야 한다.</p>
+    <div class="grid g3">
+      <div class="card"><h3>① Mattermost Office</h3><p>에이전트가 직원처럼 채널에 상주. 업무 요청, 파일 공유, 승인, 보고가 모두 대화형으로 발생.</p><p class="ok">고객이 즉시 이해하는 “회사 사무실” UI.</p></div>
+      <div class="card"><h3>② Mission Control Web</h3><p>조직도, 현재 업무, 승인 대기, 위험 알림, KPI, 실행 로그를 한 화면에서 관제.</p><p class="ok">영업/데모의 핵심 화면.</p></div>
+      <div class="card"><h3>③ Local Agent Runtime</h3><p>실제 도구 실행, 파일 접근, 커넥터, 스케줄러, 정책 엔진, 감사 로그를 담당하는 백엔드.</p><p class="ok">제품의 실질적 두뇌.</p></div>
+      <div class="card"><h3>④ Knowledge Graph</h3><p>문서, 고객, 프로젝트, 결정, 회의, 코드, 이슈, 계약을 연결하는 회사 기억.</p><p>Obsidian 감성은 참고하되 메인 UI는 웹.</p></div>
+      <div class="card"><h3>⑤ Desktop Launcher</h3><p>시작/중지/업데이트/로그/권한/시크릿/로컬 폴더 연결을 관리하는 앱.</p><p>초기엔 Tauri 권장, Electron은 빠른 프로토타입용.</p></div>
+      <div class="card"><h3>⑥ White-label Pack</h3><p>고객사 로고·컬러·도메인·에이전트 이름·산업 템플릿을 바꾸는 패키징 레이어.</p><p class="ok">공식 서비스/리셀러 확장에 필수.</p></div>
+    </div>
+  </section>
+
+  <section class="section printBreak">
+    <h2>2. 전체 시스템 아키텍처</h2>
+    <div class="svgbox">
+      <svg width="1120" height="660" viewBox="0 0 1120 660" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BINDERY BOX architecture">
+        <defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#22d3ee"/><stop offset=".55" stop-color="#60a5fa"/><stop offset="1" stop-color="#a78bfa"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity=".35"/></filter></defs>
+        <rect width="1120" height="660" rx="28" fill="#070b13"/>
+        <text x="44" y="50" fill="#e5e7eb" font-size="28" font-weight="800">BINDERY BOX — AI Company-in-a-Box Architecture</text>
+        <g filter="url(#s)">
+          <rect x="42" y="86" width="1036" height="82" rx="18" fill="#111827" stroke="#334155"/>
+          <text x="70" y="120" fill="#93c5fd" font-size="20" font-weight="800">Experience Layer</text>
+          <text x="70" y="148" fill="#cbd5e1" font-size="15">Mattermost Office · Mission Control Web · Desktop Launcher · Customer Portal</text>
+        </g>
+        <g filter="url(#s)">
+          <rect x="42" y="204" width="314" height="150" rx="18" fill="#0f172a" stroke="#334155"/>
+          <text x="70" y="238" fill="#22d3ee" font-size="19" font-weight="800">Mattermost Office</text>
+          <text x="70" y="270" fill="#cbd5e1" font-size="14">#ceo · #ops · #sales</text><text x="70" y="294" fill="#cbd5e1" font-size="14">#production · #approvals</text><text x="70" y="318" fill="#cbd5e1" font-size="14">Bot accounts · slash commands</text>
+          <rect x="70" y="330" width="106" height="8" rx="4" fill="url(#g)"/>
+        </g>
+        <g filter="url(#s)">
+          <rect x="403" y="204" width="314" height="150" rx="18" fill="#0f172a" stroke="#334155"/>
+          <text x="431" y="238" fill="#60a5fa" font-size="19" font-weight="800">Mission Control Web</text>
+          <text x="431" y="270" fill="#cbd5e1" font-size="14">Org chart · Task board</text><text x="431" y="294" fill="#cbd5e1" font-size="14">Approvals · Audit logs</text><text x="431" y="318" fill="#cbd5e1" font-size="14">KPI · Cost · Risk views</text>
+          <rect x="431" y="330" width="106" height="8" rx="4" fill="url(#g)"/>
+        </g>
+        <g filter="url(#s)">
+          <rect x="764" y="204" width="314" height="150" rx="18" fill="#0f172a" stroke="#334155"/>
+          <text x="792" y="238" fill="#a78bfa" font-size="19" font-weight="800">Desktop Launcher</text>
+          <text x="792" y="270" fill="#cbd5e1" font-size="14">Start/stop · updates</text><text x="792" y="294" fill="#cbd5e1" font-size="14">Secrets · local folders</text><text x="792" y="318" fill="#cbd5e1" font-size="14">Native permission checks</text>
+          <rect x="792" y="330" width="106" height="8" rx="4" fill="url(#g)"/>
+        </g>
+        <g filter="url(#s)">
+          <rect x="42" y="398" width="1036" height="92" rx="18" fill="#111827" stroke="#334155"/>
+          <text x="70" y="432" fill="#34d399" font-size="20" font-weight="800">Local Agent Runtime</text>
+          <text x="70" y="461" fill="#cbd5e1" font-size="15">Profile runner · queue · scheduler · policy engine · tool executor · connector hub · audit writer · redaction gateway</text>
+        </g>
+        <g filter="url(#s)">
+          <rect x="42" y="530" width="500" height="82" rx="18" fill="#0b1220" stroke="#334155"/>
+          <text x="70" y="562" fill="#fbbf24" font-size="19" font-weight="800">Knowledge/Data Layer</text>
+          <text x="70" y="590" fill="#cbd5e1" font-size="14">Postgres/SQLite · Vector index · Document store · Evidence graph</text>
+          <rect x="578" y="530" width="500" height="82" rx="18" fill="#0b1220" stroke="#334155"/>
+          <text x="606" y="562" fill="#fb7185" font-size="19" font-weight="800">Governance/Security Layer</text>
+          <text x="606" y="590" fill="#cbd5e1" font-size="14">RBAC · approval policy · secret vault · customer boundary · compliance report</text>
+        </g>
+        <path d="M560 168 V204" stroke="#60a5fa" stroke-width="3"/><path d="M199 354 V398M560 354V398M921 354V398" stroke="#60a5fa" stroke-width="3"/><path d="M560 490 V530" stroke="#60a5fa" stroke-width="3"/>
+      </svg>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>3. 웹 서비스 설계</h2>
+    <p class="lead">웹 서비스는 단순 관리자 화면이 아니라 고객이 “우리 회사 안에 AI 운영팀이 생겼다”고 느끼는 Mission Control이다.</p>
+    <table class="table"><thead><tr><th>영역</th><th>주요 화면</th><th>MVP 기능</th><th>v1 강화</th></tr></thead><tbody>
+      <tr><td>Home</td><td>Command Center</td><td>오늘의 업무, 위험 알림, 승인 대기, 에이전트 헬스</td><td>고객별 위젯/대시보드 빌더</td></tr>
+      <tr><td>Org</td><td>AI 조직도</td><td>에이전트 역할, 책임, 상태, 최근 업무</td><td>부서 템플릿, 권한 매트릭스, 성과 지표</td></tr>
+      <tr><td>Work</td><td>Task Board</td><td>요청→계획→실행→검토→승인→완료 상태관리</td><td>SLA, 반복 업무, 의존성 그래프</td></tr>
+      <tr><td>Approvals</td><td>Human Gate</td><td>고위험 액션 승인/반려/수정요청</td><td>정책 기반 자동 라우팅, 모바일 알림</td></tr>
+      <tr><td>Knowledge</td><td>Evidence Graph</td><td>문서/고객/프로젝트/결정 연결 그래프</td><td>권한 기반 검색, 출처 기반 답변</td></tr>
+      <tr><td>Audit</td><td>Trace Viewer</td><td>누가/언제/무엇을/왜 실행했는지 추적</td><td>컴플라이언스 리포트 자동 생성</td></tr>
+      <tr><td>Settings</td><td>White-label Admin</td><td>회사명, 로고, 색상, 에이전트 이름, 채널</td><td>멀티테넌트, SSO, 결제/라이선스</td></tr>
+    </tbody></table>
+  </section>
+
+  <section class="section printBreak">
+    <h2>4. Desktop 앱 설계 — Electron보다 좋은 방법</h2>
+    <div class="grid g2">
+      <div class="card"><h3>권장: Tauri 우선</h3><p>최종 제품은 로컬 권한·시크릿·자동업데이트·트레이 앱이 중요하다. Electron도 가능하지만 용량/메모리/배포 부담이 커서 <b>Tauri + Web UI</b>가 더 깔끔하다.</p><p class="ok">MVP 웹 코드를 그대로 재사용하면서 앱 크기를 줄일 수 있음.</p></div>
+      <div class="card"><h3>Electron을 쓰는 경우</h3><p>초기 내부 데모를 아주 빠르게 만들거나, Node 기반 로컬 제어를 앱 내부에서 무겁게 써야 하는 경우 Electron이 편하다.</p><p class="warn">공식 배포판은 Tauri 전환을 염두에 두고 설계.</p></div>
+    </div>
+    <div class="code mono">Desktop Launcher 책임
+- 로컬 런타임 start/stop/restart
+- Docker 또는 native service 상태 확인
+- Mattermost/Mission Control 열기
+- 로컬 폴더 권한 연결
+- 시크릿 저장소 관리
+- 로그/진단 패키지 생성
+- 업데이트 확인 및 롤백
+- 고객사 브랜딩 적용
+
+권장 단계
+MVP: CLI + Web
+Alpha: Tauri shell + local API health
+Beta: signed desktop installer + auto-update
+v1: customer white-label installer</div>
+  </section>
+
+  <section class="section">
+    <h2>5. 공식 서비스 리포 구조</h2>
+    <p class="lead">공식 GitHub는 단순 코드 저장소가 아니라 투자자/고객/개발자가 모두 이해하는 제품 본진이어야 한다.</p>
+    <div class="code mono">bindery-box/
+├ README.md                         # 공식 서비스 소개, 빠른 시작, 제품 그림
+├ LICENSE                           # 초기엔 권리 보호 목적이면 미공개/별도 라이선스 권장
+├ docs/
+│  ├ bindery-box-development-plan.html
+│  ├ architecture.md
+│  ├ product-spec.md
+│  ├ security-model.md
+│  └ manufacturing-edition.md
+├ apps/
+│  ├ mission-control/               # Next.js/React 웹 대시보드
+│  ├ desktop-launcher/              # Tauri 앱
+│  └ customer-portal/                # v1 고객 포털
+├ services/
+│  ├ runtime-api/                    # 로컬 컨트롤 API
+│  ├ agent-runner/                   # 에이전트 실행/큐/스케줄러
+│  ├ mattermost-bridge/              # 채널/봇/웹훅 자동 구성
+│  └ connector-hub/                  # 파일/ERP/MES/Git/Webhook 커넥터
+├ packages/
+│  ├ ui/                             # 디자인 시스템
+│  ├ agent-sdk/                      # 역할/툴/정책 타입
+│  ├ policy-engine/                  # 승인/권한/위험도 정책
+│  ├ knowledge-core/                 # 문서/그래프/검색
+│  └ white-label/                    # 테마/브랜딩/템플릿
+├ templates/
+│  ├ general-company/
+│  └ manufacturing/
+├ infra/
+│  ├ docker-compose.yml
+│  ├ helm/
+│  └ local/
+└ scripts/
+   ├ doctor.ts
+   ├ seed-demo.ts
+   └ package-release.ts</div>
+  </section>
+
+  <section class="section printBreak">
+    <h2>6. 운영 루프 도식</h2>
+    <div class="svgbox">
+      <svg width="1120" height="420" viewBox="0 0 1120 420" xmlns="http://www.w3.org/2000/svg">
+        <rect width="1120" height="420" rx="24" fill="#070b13"/>
+        <text x="42" y="48" fill="#e5e7eb" font-size="27" font-weight="800">Business Operating Loop</text>
+        <g fill="#0f172a" stroke="#334155" stroke-width="1.3">
+          <rect x="54" y="110" width="160" height="100" rx="20"/><rect x="278" y="110" width="160" height="100" rx="20"/><rect x="502" y="110" width="160" height="100" rx="20"/><rect x="726" y="110" width="160" height="100" rx="20"/><rect x="950" y="110" width="120" height="100" rx="20"/>
+          <rect x="278" y="270" width="160" height="82" rx="20"/><rect x="502" y="270" width="160" height="82" rx="20"/><rect x="726" y="270" width="160" height="82" rx="20"/>
+        </g>
+        <g font-size="17" font-weight="800" fill="#e5e7eb"><text x="84" y="150">Request</text><text x="300" y="150">Plan</text><text x="530" y="150">Execute</text><text x="750" y="150">Review</text><text x="976" y="150">Report</text><text x="306" y="304">Approve</text><text x="530" y="304">Audit</text><text x="752" y="304">Learn</text></g>
+        <g font-size="13" fill="#94a3b8"><text x="78" y="178">Mattermost input</text><text x="300" y="178">agent task plan</text><text x="522" y="178">tools/connectors</text><text x="748" y="178">human/critic gate</text><text x="968" y="178">KPI + evidence</text><text x="304" y="329">risk actions</text><text x="536" y="329">trace log</text><text x="752" y="329">memory update</text></g>
+        <g stroke="#60a5fa" stroke-width="4" fill="none" marker-end="url(#arrow)"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#60a5fa"/></marker></defs><path d="M214 160 H270"/><path d="M438 160 H494"/><path d="M662 160 H718"/><path d="M886 160 H942"/><path d="M1010 210 C1010 365 190 390 134 216"/><path d="M358 210 V264"/><path d="M582 210 V264"/><path d="M806 210 V264"/></g>
+      </svg>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>7. 기술 스택 제안</h2>
+    <table class="table"><thead><tr><th>레이어</th><th>권장</th><th>이유</th><th>대안</th></tr></thead><tbody>
+      <tr><td>Web</td><td>Next.js 또는 Vite React</td><td>빠른 대시보드 개발, SSR/정적 배포 선택 가능</td><td>Remix, SvelteKit</td></tr>
+      <tr><td>API</td><td>Bun/Node TypeScript + Fastify</td><td>기존 생태계와 맞고 로컬 API 구현이 빠름</td><td>Go, Python FastAPI</td></tr>
+      <tr><td>Desktop</td><td>Tauri</td><td>가벼운 설치 파일, 네이티브 권한/트레이/업데이트 유리</td><td>Electron</td></tr>
+      <tr><td>Office</td><td>Mattermost Docker</td><td>오픈형 협업 UI, 봇/채널/웹훅 자동화 용이</td><td>Matrix, Zulip</td></tr>
+      <tr><td>DB</td><td>SQLite MVP → Postgres v1</td><td>로컬 설치 단순, 이후 멀티테넌트 확장</td><td>DuckDB 병행</td></tr>
+      <tr><td>Queue</td><td>BullMQ/SQLite queue MVP</td><td>업무 실행 상태 추적</td><td>NATS, Temporal</td></tr>
+      <tr><td>Knowledge</td><td>Local document store + vector index</td><td>온프레미스/권한 기반 지식 검색</td><td>Qdrant, LanceDB</td></tr>
+      <tr><td>Packaging</td><td>Docker Compose + Desktop wrapper</td><td>시연/설치/복구 쉬움</td><td>Kubernetes/Helm</td></tr>
+    </tbody></table>
+  </section>
+
+  <section class="section printBreak">
+    <h2>8. 12주 MVP 개발 로드맵</h2>
+    <div class="timeline">
+      <div class="timeitem"><div class="week">Week 1</div><div class="bar"><h4>제품 골격/리포/브랜딩</h4><p>모노레포, 디자인 토큰, 공식 README, 개발/데모 Docker 스택.</p></div></div>
+      <div class="timeitem"><div class="week">Week 2</div><div class="bar"><h4>Runtime API + DB 스키마</h4><p>에이전트, 태스크, 승인, 로그, 커넥터, 지표 기본 모델.</p></div></div>
+      <div class="timeitem"><div class="week">Week 3</div><div class="bar"><h4>Mission Control 1차</h4><p>홈, 조직도, 태스크보드, 승인 대기 화면.</p></div></div>
+      <div class="timeitem"><div class="week">Week 4</div><div class="bar"><h4>Mattermost Office 자동 구성</h4><p>채널/봇/웹훅/명령어 생성, 샘플 회사 템플릿.</p></div></div>
+      <div class="timeitem"><div class="week">Week 5</div><div class="bar"><h4>Agent SDK + 기본 에이전트</h4><p>CEO, PM, Ops, Research, Dev 역할 스펙과 실행 계약.</p></div></div>
+      <div class="timeitem"><div class="week">Week 6</div><div class="bar"><h4>승인/RBAC/감사</h4><p>위험도 정책, 승인 버튼, 증적 로그, 민감정보 마스킹.</p></div></div>
+      <div class="timeitem"><div class="week">Week 7</div><div class="bar"><h4>Knowledge Layer</h4><p>파일 인덱싱, 문서 검색, 출처 링크, 그래프 뷰 초안.</p></div></div>
+      <div class="timeitem"><div class="week">Week 8</div><div class="bar"><h4>Connector Hub</h4><p>파일/CSV/Git/Webhook/HTTP 커넥터와 권한 정책.</p></div></div>
+      <div class="timeitem"><div class="week">Week 9</div><div class="bar"><h4>Manufacturing Edition</h4><p>생산 리더, 영업 리더, Scope 3 리더 + 샘플 데이터.</p></div></div>
+      <div class="timeitem"><div class="week">Week 10</div><div class="bar"><h4>Launcher UX</h4><p>doctor/start/stop/status/logs, Tauri 초안 또는 CLI 런처.</p></div></div>
+      <div class="timeitem"><div class="week">Week 11</div><div class="bar"><h4>Demo Scenario</h4><p>제조업 1일 운영 시나리오, 대시보드 KPI, 보고서 자동화.</p></div></div>
+      <div class="timeitem"><div class="week">Week 12</div><div class="bar"><h4>Alpha Packaging</h4><p>설치 문서, 진단 스크립트, 보안 점검, 데모 영상/피치 자료.</p></div></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>9. 데이터 모델 초안</h2>
+    <div class="grid g2">
+      <div class="code mono">Core Entities
+- Tenant
+- Workspace
+- AgentProfile
+- ChannelBinding
+- Task
+- TaskEvent
+- ApprovalRequest
+- ToolRun
+- Connector
+- Document
+- EvidenceNode
+- AuditLog
+- MetricSnapshot
+- WhiteLabelTheme</div>
+      <div class="code mono">Task State Machine
+requested
+→ triaged
+→ planned
+→ waiting_approval
+→ executing
+→ reviewing
+→ completed
+→ archived
+
+exception states:
+blocked / rejected / failed / cancelled</div>
+    </div>
+  </section>
+
+  <section class="section printBreak">
+    <h2>10. API 초안</h2>
+    <table class="table"><thead><tr><th>API</th><th>Method</th><th>설명</th></tr></thead><tbody>
+      <tr><td class="mono">/api/agents</td><td>GET/POST</td><td>에이전트 목록/생성</td></tr>
+      <tr><td class="mono">/api/tasks</td><td>GET/POST</td><td>업무 생성/조회</td></tr>
+      <tr><td class="mono">/api/tasks/:id/events</td><td>GET</td><td>업무 타임라인</td></tr>
+      <tr><td class="mono">/api/approvals/:id/decision</td><td>POST</td><td>승인/반려/수정요청</td></tr>
+      <tr><td class="mono">/api/tool-runs</td><td>GET</td><td>도구 실행 기록</td></tr>
+      <tr><td class="mono">/api/knowledge/search</td><td>POST</td><td>출처 기반 문서 검색</td></tr>
+      <tr><td class="mono">/api/connectors</td><td>GET/POST</td><td>커넥터 상태/등록</td></tr>
+      <tr><td class="mono">/api/audit</td><td>GET</td><td>감사 로그</td></tr>
+      <tr><td class="mono">/api/health</td><td>GET</td><td>런타임/DB/오피스 상태</td></tr>
+    </tbody></table>
+  </section>
+
+  <section class="section">
+    <h2>11. 기본 에이전트 스펙</h2>
+    <table class="table"><thead><tr><th>Agent</th><th>책임</th><th>주요 지표</th><th>필수 승인</th></tr></thead><tbody>
+      <tr><td>CEO Agent</td><td>우선순위, 전략 요약, 의사결정 요청 정리</td><td>의사결정 리드타임, 목표 달성률</td><td>외부 발송/예산/계약</td></tr>
+      <tr><td>PM Agent</td><td>업무 분해, 일정, 의존성, 리스크 관리</td><td>마감 준수율, 블로커 해결시간</td><td>범위 변경</td></tr>
+      <tr><td>Ops Agent</td><td>반복 운영, 보고서, 알림, 데이터 정리</td><td>자동화 시간 절감, 오류율</td><td>시스템 변경</td></tr>
+      <tr><td>Research Agent</td><td>시장/기술/고객 조사, 근거 수집</td><td>근거 충실도, 보고서 채택률</td><td>외부 공개</td></tr>
+      <tr><td>Dev Agent</td><td>코드/문서/테스트/배포 보조</td><td>PR 처리시간, 테스트 통과율</td><td>배포/삭제/시크릿 접근</td></tr>
+      <tr><td>Production Leader</td><td>생산일보, 납기 위험, 비가동 요약</td><td>보고 준비시간 -50%, 납기 위험 조기감지</td><td>작업지시 변경</td></tr>
+      <tr><td>Sales Leader</td><td>견적 초안, 고객 follow-up, 수주 가능성 분석</td><td>견적 리드타임, 전환율</td><td>고객 발송/가격 확정</td></tr>
+      <tr><td>Scope 3 Leader</td><td>공급망 탄소 데이터 수집/누락 관리/보고 초안</td><td>데이터 누락률, 요청 대응시간</td><td>공식 제출</td></tr>
+    </tbody></table>
+  </section>
+
+  <section class="section printBreak">
+    <h2>12. P0/P1/P2 백로그</h2>
+    <div class="grid g3">
+      <div class="card"><h3 class="danger">P0 — 반드시</h3><ul><li>로컬 설치/실행</li><li>Mission Control 홈</li><li>Mattermost 채널/봇 자동화</li><li>태스크/승인/감사 로그</li><li>기본 에이전트 5종</li><li>제조업 데모 데이터</li><li>보안 마스킹</li></ul></div>
+      <div class="card"><h3 class="warn">P1 — v1 경쟁력</h3><ul><li>Tauri Desktop Launcher</li><li>Knowledge Graph</li><li>커넥터 허브</li><li>화이트라벨 테마</li><li>정책 기반 승인 라우팅</li><li>KPI 리포트</li><li>진단 패키지</li></ul></div>
+      <div class="card"><h3 class="ok">P2 — 확장</h3><ul><li>멀티테넌트</li><li>SSO</li><li>마켓플레이스</li><li>산업별 템플릿</li><li>원격 관리형 콘솔</li><li>모바일 승인 앱</li><li>파트너 리셀러 패키지</li></ul></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>13. 품질/검증 전략</h2>
+    <table class="table"><thead><tr><th>검증</th><th>방법</th><th>목표</th></tr></thead><tbody>
+      <tr><td>설치 검증</td><td>fresh macOS/Ubuntu에서 doctor + start</td><td>30분 내 90% 성공</td></tr>
+      <tr><td>업무 검증</td><td>제조업 샘플 시나리오 20개 반복</td><td>70%+ 완료 + 증적</td></tr>
+      <tr><td>보안 검증</td><td>시크릿 스캔, 로그 마스킹 테스트</td><td>민감정보 노출 0건</td></tr>
+      <tr><td>권한 검증</td><td>위험도별 승인 요구 테스트</td><td>고위험 액션 100% 게이트</td></tr>
+      <tr><td>UI 검증</td><td>비개발자 5명 데모</td><td>10분 내 개념 이해</td></tr>
+      <tr><td>성능 검증</td><td>동시 태스크 50개 큐 처리</td><td>누락/중복 실행 0건</td></tr>
+    </tbody></table>
+  </section>
+
+  <section class="section printBreak">
+    <h2>14. 첫 10개 구현 태스크</h2>
+    <ol>
+      <li>공식 리포 생성: README, docs, 기본 디렉토리, 보안 .gitignore.</li>
+      <li>제품 디자인 토큰 정의: 색상, 타이포, 로고 플레이스홀더, 카드 컴포넌트.</li>
+      <li>Runtime API 스키마 작성: Tenant, Agent, Task, Approval, Audit.</li>
+      <li>Mission Control 홈 화면 구현: 상태 카드, 태스크, 승인, 에이전트 헬스.</li>
+      <li>Mattermost Docker Compose 초안: 서버, DB, 초기 관리자 설정 문서.</li>
+      <li>Mattermost Bridge 구현: 채널/봇/웹훅 자동 생성 스크립트.</li>
+      <li>Agent SDK 작성: AgentProfile, TaskContract, ToolPolicy 타입.</li>
+      <li>기본 에이전트 템플릿 5종 작성: CEO/PM/Ops/Research/Dev.</li>
+      <li>감사 로그/승인 정책 구현: 위험도 기반 human gate.</li>
+      <li>Manufacturing demo seed: 생산일보, 견적 요청, Scope 3 문서 샘플.</li>
+    </ol>
+  </section>
+
+  <section class="section">
+    <h2>15. 공식 서비스화 전략</h2>
+    <div class="grid g2">
+      <div class="card"><h3>GitHub 공개 전략</h3><p>처음부터 모든 런타임을 오픈할 필요는 없다. 공식 리포는 <b>제품 소개 + 개발계획 + 데모 스캐폴드</b>로 시작하고, 민감한 운영 코어는 별도 비공개 또는 오픈코어 방식으로 분리한다.</p></div>
+      <div class="card"><h3>제품 라이선스 전략</h3><p>초기에는 Apache/MIT보다 <b>source-available 또는 상업 라이선스</b>를 검토. 공개 범위는 템플릿/문서/SDK/데모 앱부터 시작한다.</p></div>
+      <div class="card"><h3>고객 데모 전략</h3><p>“설치하면 작은 AI 회사가 생긴다”를 5분 안에 보여준다. Mattermost 사무실 → Mission Control → 제조업 업무 완료 보고 순서.</p></div>
+      <div class="card"><h3>수익화 전략</h3><p>PoC 구축비 + 월 구독 + 커넥터 개발비 + 온프레미스 유지보수. 제조업/ESG/영업 자동화 패키지를 첫 상품으로 묶는다.</p></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>16. 리스크와 대응</h2>
+    <table class="table"><thead><tr><th>리스크</th><th>영향</th><th>대응</th></tr></thead><tbody>
+      <tr><td>에이전트가 “멋있지만 실제 업무가 약함”</td><td>PoC 전환 실패</td><td>제조업 20개 반복 업무를 먼저 고정하고 KPI로 검증</td></tr>
+      <tr><td>설치가 복잡함</td><td>데모 실패</td><td>doctor/start/status 자동화, Docker 우선, Desktop은 래퍼 역할</td></tr>
+      <tr><td>보안 우려</td><td>B2B 도입 지연</td><td>로컬 우선, 승인/감사/시크릿 마스킹, 고객 데이터 경계 명확화</td></tr>
+      <tr><td>범위 과대</td><td>개발 지연</td><td>P0: Office + Mission Control + Runtime + Demo만 완성</td></tr>
+      <tr><td>오픈소스 공개 범위 혼선</td><td>IP 손실/신뢰 하락</td><td>공식 리포는 공개, 핵심 운영 코어는 단계적 공개</td></tr>
+    </tbody></table>
+  </section>
+
+  <div class="footer">BINDERY BOX / MUFI Box Development Plan · Confidential Draft · Generated for official service planning</div>
+</div>
+</body>
+</html>
