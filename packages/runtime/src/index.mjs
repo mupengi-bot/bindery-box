@@ -15,6 +15,7 @@ import {
   buildAgentPersona,
   buildAgentPrompt,
   getRoleTemplate,
+  makeId,
   nowIso
 } from "../../domain/src/index.mjs";
 import {
@@ -235,6 +236,97 @@ function routeAgentForLane(state, lane) {
     ?? null;
 }
 
+const PLAN_BY_LANE = Object.freeze({
+  production: {
+    data: ["생산일보", "라인별 생산 실적", "공급사 납기 상태", "주문 백로그"],
+    capabilities: ["files.read", "mes.production.read"],
+    artifacts: ["납기 위험 원인 3개", "우선순위 조치안", "생산 리스크 보고서"],
+    steps: [
+      ["production-read", "생산일보와 라인 상태 조회", "low"],
+      ["risk-detect", "납기 위험 원인 후보 추출", "medium"],
+      ["action-plan", "조치 우선순위와 담당 부서 제안", "medium"],
+      ["report", "운영자용 보고서 초안 작성", "low"]
+    ],
+    estimate: 2,
+    confidence: 82,
+    approval: { required: false, reason: "읽기 전용 분석으로 외부 영향 작업 없음", boundary: "외부 발송 또는 ERP 쓰기 작업 전 승인" }
+  },
+  sales: {
+    data: ["견적 목록", "최근 고객 응답", "CRM 상태", "미팅 메모"],
+    capabilities: ["files.read", "email.draft", "external.customer.send"],
+    artifacts: ["고객별 후속 메시지 초안", "수주 가능성 요약", "승인 메모"],
+    steps: [
+      ["quote-review", "미응답 견적과 고객 우선순위 확인", "low"],
+      ["draft", "고객별 후속 메시지 초안 작성", "medium"],
+      ["human-gate", "외부 발송 전 승인 요청", "high"],
+      ["thread", "승인 후 메신저/메일 발송 준비", "high"]
+    ],
+    estimate: 3,
+    confidence: 74,
+    approval: { required: true, reason: "외부 고객 커뮤니케이션이 포함됨", boundary: "고객에게 메시지 발송 전" }
+  },
+  scope3: {
+    data: ["협력사 목록", "배출계수", "전력 사용량", "이전 자료 요청 내역"],
+    capabilities: ["files.read", "scope3.report.generate", "external.customer.send"],
+    artifacts: ["누락 공급사 목록", "자료 요청 초안", "Scope 3 리스크 메모"],
+    steps: [
+      ["supplier-scan", "협력사별 누락 필드 스캔", "low"],
+      ["gap-rank", "누락 리스크와 우선순위 산정", "medium"],
+      ["request-draft", "자료 요청 초안 작성", "medium"],
+      ["human-gate", "외부 요청 전 승인", "high"]
+    ],
+    estimate: 4,
+    confidence: 78,
+    approval: { required: true, reason: "협력사 외부 자료 요청 가능성이 있음", boundary: "협력사에 자료 요청 발송 전" }
+  },
+  control: {
+    data: ["승인 큐", "감사 로그", "정책 상태", "커넥터 권한"],
+    capabilities: ["approval.manage", "audit.read"],
+    artifacts: ["승인 병목 요약", "정책 점검표", "감사 메모"],
+    steps: [
+      ["queue-read", "승인 큐와 감사 로그 조회", "low"],
+      ["policy-check", "위험 권한과 지연 원인 점검", "medium"],
+      ["recommend", "운영자 조치 추천", "medium"]
+    ],
+    estimate: 2,
+    confidence: 80,
+    approval: { required: false, reason: "관제 분석은 읽기 중심", boundary: "정책 변경 또는 권한 부여 전" }
+  }
+});
+
+export function buildPlanPreview(state, command) {
+  const lane = OFFICE_LANES.includes(command.lane) ? command.lane : "control";
+  const spec = PLAN_BY_LANE[lane] ?? PLAN_BY_LANE.control;
+  const agent = routeAgentForLane(state, lane);
+  const title = String(command.title ?? "").trim() || "새 업무 목표";
+  return {
+    id: makeId("plan"),
+    workspaceId: command.workspaceId ?? state.workspace?.id ?? "ws_default",
+    title,
+    lane,
+    assignedAgentId: agent?.id ?? null,
+    assignedAgentName: agent?.name ?? "Unassigned",
+    steps: spec.steps.map(([id, label, risk], index) => ({ id, label, risk, index: index + 1 })),
+    requiredData: spec.data.slice(),
+    requiredCapabilities: spec.capabilities.slice(),
+    expectedArtifacts: spec.artifacts.slice(),
+    approvals: [spec.approval],
+    estimatedMinutes: spec.estimate,
+    confidence: spec.confidence,
+    requestedBy: command.requestedBy ?? "operator",
+    createdAt: nowIso()
+  };
+}
+
+function handleTaskPlanPreview(state, command) {
+  const c = createCollector(state);
+  const preview = buildPlanPreview(state, command);
+  c.emit(EventType.taskPlanPreviewed,
+    { planId: preview.id, workspaceId: preview.workspaceId, title: preview.title, lane: preview.lane, agentId: preview.assignedAgentId, requestedBy: command.requestedBy },
+    { actorType: "human", actor: command.requestedBy ?? "operator", target: preview.id, message: `실행 계획 미리보기: ${preview.title}` });
+  return { ok: true, decision: "previewed", events: c.events, result: { preview } };
+}
+
 // zone.work-request.created -> task.create. Turns a department work request into
 // a real queued task, routes it to a lane colleague, and (optionally) enqueues a
 // run intent. The task then surfaces as a runnable mission in the workstream
@@ -339,6 +431,9 @@ export function dispatch(state, command, options = {}) {
 
   let outcome;
   switch (command.type) {
+    case CommandType.taskPlanPreview:
+      outcome = handleTaskPlanPreview(state, command);
+      break;
     case CommandType.taskRun:
       outcome = handleTaskRun(state, command, policy);
       break;
@@ -421,6 +516,7 @@ export function projectOverview(state, workspaceId) {
 //   * office  — Mattermost-mock channel posts
 // Every entry is { id, ts, source, level, actor, channel, action, message }.
 const LIVE_EVENT_META = Object.freeze({
+  "task.plan.previewed": { level: "info", label: "실행 계획 미리보기" },
   "task.created": { level: "info", label: "업무 생성" },
   "agent.move.requested": { level: "info", label: "이동 요청" },
   "agent.move.accepted": { level: "info", label: "이동 수락" },

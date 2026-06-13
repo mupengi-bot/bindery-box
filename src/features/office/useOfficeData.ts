@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Connector, GoldenImage, KnowledgeResult, LiveLog, RoleTemplate, Workstream } from "./types";
+import type { Connector, GoldenImage, KnowledgeResult, LiveLog, PlanPreview, RoleTemplate, Workstream } from "./types";
 
 const WS = "default";
 const POLL_MS = 6000;
@@ -27,6 +27,8 @@ export interface OfficeData {
   refresh: () => Promise<void>;
   /** Create a zone/task work request, then refresh. */
   createTask: (input: CreateTaskInput) => Promise<void>;
+  /** Preview a work plan without mutating canonical task state. */
+  previewPlan: (input: CreateTaskInput) => Promise<PlanPreview>;
   /** Persist an agent movement command, then refresh. */
   moveAgent: (input: MoveAgentInput) => Promise<void>;
   /** Run a task (mission) by id, then refresh. */
@@ -97,6 +99,20 @@ export function useOfficeData(): OfficeData {
       await refresh();
     },
     [refresh],
+  );
+
+  const previewPlan = useCallback(
+    async (input: CreateTaskInput): Promise<PlanPreview> => {
+      const res = await fetch(`/api/workspaces/${WS}/plan-preview`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...input, requestedBy: "operator" }),
+      });
+      if (!res.ok) throw new Error(`plan-preview -> ${res.status}`);
+      const data = (await res.json()) as { preview: PlanPreview };
+      return data.preview;
+    },
+    [],
   );
 
   const moveAgent = useCallback(
@@ -170,6 +186,7 @@ export function useOfficeData(): OfficeData {
     error,
     refresh,
     createTask,
+    previewPlan,
     moveAgent,
     runMission,
     decideApproval,

@@ -22,6 +22,7 @@ import {
   projectOverview,
   projectLiveLog,
   projectWorkstream,
+  buildPlanPreview,
 } from "../../packages/runtime/src/index.mjs";
 import { listConnectors, buildCapabilityMap } from "../../packages/connectors/src/index.mjs";
 import { createKnowledgeBase, searchKnowledge } from "../../packages/knowledge/src/index.mjs";
@@ -158,6 +159,18 @@ export async function handleRequest({
       office: office(),
     });
     return { status: 200, body: { ok: outcome.ok, decision: outcome.decision, result: outcome.result, state: outcome.state } };
+  }
+
+  const planPreviewMatch = route.match(/^\/workspaces\/([^/]+)\/plan-preview$/);
+  if (method === "POST" && planPreviewMatch) {
+    const state = await store.load();
+    const preview = buildPlanPreview(state, {
+      workspaceId: planPreviewMatch[1],
+      title: body.title ?? "새 업무 목표",
+      lane: body.lane ?? "control",
+      requestedBy: body.requestedBy ?? "operator"
+    });
+    return { status: 200, body: { ok: true, preview } };
   }
 
   const taskCreateMatch = route.match(/^\/workspaces\/([^/]+)\/tasks$/);

@@ -6,6 +6,24 @@
 export type AgentStatus = "running" | "idle" | "blocked" | "disabled";
 export type LaneId = "production" | "sales" | "scope3" | "control";
 
+export interface PlanPreview {
+  id: string;
+  workspaceId: string;
+  title: string;
+  lane: LaneId;
+  assignedAgentId: string | null;
+  assignedAgentName: string;
+  steps: { id: string; label: string; risk: "low" | "medium" | "high"; index: number }[];
+  requiredData: string[];
+  requiredCapabilities: string[];
+  expectedArtifacts: string[];
+  approvals: { required: boolean; reason: string; boundary: string }[];
+  estimatedMinutes: number;
+  confidence: number;
+  requestedBy: string;
+  createdAt: string;
+}
+
 export interface WorkstreamAgent {
   id: string;
   name: string;

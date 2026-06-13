@@ -2,8 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { LANE_ZONES } from "../scene/sceneConfig";
-import type { LaneId, Mission, RoleTemplate, WorkstreamAgent } from "../types";
+import type { LaneId, Mission, PlanPreview, RoleTemplate, WorkstreamAgent } from "../types";
 import { levelColor } from "./ui";
+import { PlanPreviewPanel } from "./PlanPreviewPanel";
+
+function inferLaneFromIntent(text: string): LaneId | null {
+  const q = text.toLowerCase();
+  if (/생산|라인|납기|설비|mes|production/.test(q)) return "production";
+  if (/영업|견적|고객|수주|sales|crm/.test(q)) return "sales";
+  if (/scope\s*3|scope3|탄소|배출|협력사|esg/.test(q)) return "scope3";
+  if (/승인|감사|권한|정책|관제|approval|audit|policy/.test(q)) return "control";
+  return null;
+}
 
 export function GoalComposer({
   missions,
@@ -13,6 +23,7 @@ export function GoalComposer({
   openNonce = 0,
   onRun,
   onCreateTask,
+  onPreviewPlan,
   onCreateAgent,
   onReseed,
   busy,
@@ -24,6 +35,7 @@ export function GoalComposer({
   openNonce?: number;
   onRun: (taskId: string) => void;
   onCreateTask: (input: { title: string; lane: string; priority?: string; requiresApproval?: boolean; expectedOutput?: string; enqueue?: boolean }) => Promise<void>;
+  onPreviewPlan: (input: { title: string; lane: string; priority?: string; requiresApproval?: boolean; expectedOutput?: string; enqueue?: boolean }) => Promise<PlanPreview>;
   onCreateAgent: (input: { name: string; role: string; lane: string; templateId?: string; persona?: string; prompt?: string; capabilities?: string[]; kpi?: string }) => Promise<void>;
   onReseed: () => void;
   busy: boolean;
@@ -36,6 +48,9 @@ export function GoalComposer({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [newName, setNewName] = useState("New Operator");
   const [newRole, setNewRole] = useState("업무 자동화 담당");
+  const [planPreview, setPlanPreview] = useState<PlanPreview | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
 
   useEffect(() => {
     if (openNonce <= 0) return;
@@ -46,10 +61,14 @@ export function GoalComposer({
       const label = LANE_ZONES[initialLane].label.split(" · ")[0];
       setIntent(`${label} 구역에 업무 요청`);
     }
+    setPlanPreview(null);
+    setPlanError(null);
   }, [initialLane, openNonce]);
 
   const selectedTemplate = roleTemplates.find((t) => t.id === selectedTemplateId) ?? null;
-  const activeLane = (lane === "all" ? selectedTemplate?.lane ?? "control" : lane) as LaneId;
+  const inferredLane = inferLaneFromIntent(intent);
+  const activeLane = (lane === "all" ? inferredLane ?? selectedTemplate?.lane ?? "control" : lane) as LaneId;
+  const effectiveBusy = busy || actionBusy;
   const runnable = useMemo(() => missions.filter((m) => m.runnable), [missions]);
   const matches = useMemo(() => {
     const q = intent.trim().toLowerCase();
@@ -59,21 +78,56 @@ export function GoalComposer({
   }, [missions, intent, lane]);
 
   const createZoneTask = async () => {
+    const executionLane = planPreview?.lane ?? activeLane;
+    const title = planPreview?.title || intent.trim() || `${LANE_ZONES[executionLane].label.split(" · ")[0]} 구역 업무 요청`;
+    setActionBusy(true);
+    setPlanError(null);
+    try {
+      await onCreateTask({
+        title,
+        lane: executionLane,
+        priority: advanced ? "high" : "normal",
+        requiresApproval: planPreview ? planPreview.approvals.some((a) => a.required) : executionLane === "sales" || executionLane === "scope3",
+        expectedOutput: planPreview?.expectedArtifacts.join(" · ") || `${LANE_ZONES[executionLane].label} 업무 결과 초안`,
+        enqueue: true,
+      });
+      setIntent("");
+      setPlanPreview(null);
+    } catch (e) {
+      setPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const previewCurrentPlan = async () => {
     const title = intent.trim() || `${LANE_ZONES[activeLane].label.split(" · ")[0]} 구역 업무 요청`;
-    await onCreateTask({
-      title,
-      lane: activeLane,
-      priority: advanced ? "high" : "normal",
-      requiresApproval: activeLane === "sales" || activeLane === "scope3",
-      expectedOutput: `${LANE_ZONES[activeLane].label} 업무 결과 초안`,
-      enqueue: true,
-    });
-    setIntent("");
+    setActionBusy(true);
+    setPlanError(null);
+    try {
+      const preview = await onPreviewPlan({
+        title,
+        lane: activeLane,
+        priority: advanced ? "high" : "normal",
+        requiresApproval: activeLane === "sales" || activeLane === "scope3",
+        expectedOutput: `${LANE_ZONES[activeLane].label} 업무 결과 초안`,
+        enqueue: true,
+      });
+      setPlanPreview(preview);
+    } catch (e) {
+      setPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   const runFirst = () => {
-    if (intent.trim()) {
+    if (planPreview) {
       void createZoneTask();
+      return;
+    }
+    if (intent.trim()) {
+      void previewCurrentPlan();
       return;
     }
     const target = matches.find((m) => m.runnable) ?? runnable[0];
@@ -99,24 +153,34 @@ export function GoalComposer({
         <span style={{ fontSize: 11, color: "var(--bx-muted)" }}>· 구역 업무를 만들고 담당 에이전트에게 큐잉</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <button onClick={() => setHireOpen((v) => !v)} style={ghostBtn}>직원 생성</button>
-          <button onClick={() => setAdvanced((v) => !v)} style={ghostBtn}>{advanced ? "간단히" : "고급"}</button>
+          <button onClick={() => { setAdvanced((v) => !v); setPlanPreview(null); setPlanError(null); }} style={ghostBtn}>{advanced ? "간단히" : "고급"}</button>
           <button onClick={() => setOpen(false)} style={ghostBtn}>닫기</button>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
-        <input value={intent} onChange={(e) => setIntent(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runFirst()} placeholder="예: 생산 2라인 납기 위험 점검하고 조치안 만들어줘" style={{ flex: 1, background: "rgba(8,12,24,0.7)", border: "1px solid var(--bx-border)", borderRadius: 10, padding: "11px 14px", color: "var(--bx-text)", fontSize: 13, outline: "none" }} />
-        <button onClick={runFirst} disabled={busy || (!intent.trim() && matches.length === 0 && runnable.length === 0)} style={{ ...primaryBtn, opacity: busy || (!intent.trim() && matches.length === 0 && runnable.length === 0) ? 0.5 : 1 }}>
-          {busy ? "처리 중…" : intent.trim() ? "업무 생성 ▸" : "디스패치 ▸"}
+        <input value={intent} onChange={(e) => { setIntent(e.target.value); setPlanPreview(null); }} onKeyDown={(e) => e.key === "Enter" && runFirst()} placeholder="예: 생산 2라인 납기 위험 점검하고 조치안 만들어줘" style={{ flex: 1, background: "rgba(8,12,24,0.7)", border: "1px solid var(--bx-border)", borderRadius: 10, padding: "11px 14px", color: "var(--bx-text)", fontSize: 13, outline: "none" }} />
+        <button onClick={runFirst} disabled={effectiveBusy || (!intent.trim() && matches.length === 0 && runnable.length === 0)} style={{ ...primaryBtn, opacity: effectiveBusy || (!intent.trim() && matches.length === 0 && runnable.length === 0) ? 0.5 : 1 }}>
+          {effectiveBusy ? "처리 중…" : planPreview ? "계획대로 실행 ▸" : intent.trim() ? "계획 보기 ▸" : "디스패치 ▸"}
         </button>
       </div>
 
+      {planError && (
+        <div style={{ marginTop: 9, padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,93,115,0.32)", background: "rgba(255,93,115,0.08)", color: "var(--bx-danger)", fontSize: 11.5 }}>
+          Plan error: {planError}
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-        <Pill active={lane === "all"} onClick={() => setLane("all")} label={`전체 (${missions.length})`} />
+        <Pill active={lane === "all"} onClick={() => { setLane("all"); setPlanPreview(null); setPlanError(null); }} label={`전체 (${missions.length})`} />
         {(Object.keys(LANE_ZONES) as LaneId[]).map((l) => (
-          <Pill key={l} active={lane === l} onClick={() => setLane(l)} label={`${LANE_ZONES[l].glyph} ${LANE_ZONES[l].label.split(" · ")[0]}`} color={LANE_ZONES[l].color} />
+          <Pill key={l} active={lane === l} onClick={() => { setLane(l); setPlanPreview(null); setPlanError(null); }} label={`${LANE_ZONES[l].glyph} ${LANE_ZONES[l].label.split(" · ")[0]}`} color={LANE_ZONES[l].color} />
         ))}
       </div>
+
+      {planPreview && (
+        <PlanPreviewPanel preview={planPreview} onExecute={() => { void createZoneTask(); }} onRevise={() => setPlanPreview(null)} busy={effectiveBusy} />
+      )}
 
       {hireOpen && (
         <div className="bx-panel" style={{ marginTop: 10, padding: 11, borderRadius: 12, background: "rgba(255,255,255,0.025)" }}>

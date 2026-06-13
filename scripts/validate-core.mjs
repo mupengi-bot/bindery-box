@@ -41,7 +41,18 @@ async function main() {
   const templates = await handleRequest({ method: "GET", pathname: "/api/role-templates" });
   check("GET role-templates → presets", templates.status === 200 && Array.isArray(templates.body.templates) && templates.body.templates.length >= 4);
 
-  // 8) agent creation flow — create a safe custom staff member from a template
+  // 8) plan preview flow — preview must not create a task yet
+  const beforePreviewWs = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/workstream" });
+  const preview = await handleRequest({
+    method: "POST",
+    pathname: "/api/workspaces/default/plan-preview",
+    body: { title: "생산 2라인 납기 위험 점검", lane: "production", requestedBy: "ci" },
+  });
+  const afterPreviewWs = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/workstream" });
+  check("POST plan-preview → PlanPreview", preview.status === 200 && preview.body.preview?.expectedArtifacts?.length > 0 && preview.body.preview?.confidence > 0, preview.body.preview?.assignedAgentName);
+  check("plan-preview does not mutate tasks", beforePreviewWs.body.missions.length === afterPreviewWs.body.missions.length);
+
+  // 9) agent creation flow — create a safe custom staff member from a template
   const createAgent = await handleRequest({
     method: "POST",
     pathname: "/api/workspaces/default/agents",

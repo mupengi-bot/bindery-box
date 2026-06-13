@@ -4,6 +4,7 @@
 import { nowIso, makeId } from "../../domain/src/index.mjs";
 
 export const CommandType = Object.freeze({
+  taskPlanPreview: "task.plan.preview",
   taskRun: "task.run",
   taskCreate: "task.create",
   agentCreate: "agent.create",
@@ -15,6 +16,7 @@ export const CommandType = Object.freeze({
 });
 
 export const EventType = Object.freeze({
+  taskPlanPreviewed: "task.plan.previewed",
   userMessageReceived: "user.message.received",
   taskCreated: "task.created",
   taskRunStarted: "task.run.started",
@@ -41,6 +43,7 @@ export const EventType = Object.freeze({
 
 // Minimal field-presence schemas keyed by command type.
 const COMMAND_SCHEMAS = {
+  [CommandType.taskPlanPreview]: ["workspaceId", "title", "requestedBy"],
   [CommandType.taskRun]: ["taskId", "requestedBy"],
   [CommandType.taskCreate]: ["workspaceId", "title", "requestedBy"],
   [CommandType.agentCreate]: ["workspaceId", "name", "role", "requestedBy"],

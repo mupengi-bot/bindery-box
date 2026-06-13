@@ -148,7 +148,7 @@ export function Hud({
 
       {/* bottom-center: goal composer */}
       <div style={{ gridArea: "composer", alignSelf: "end", justifySelf: "center", width: "100%", zIndex: HUD_Z.composer }}>
-        <GoalComposer missions={ws?.missions ?? []} agents={ws?.agents ?? []} roleTemplates={data.roleTemplates} initialLane={composerLane} openNonce={composerOpenNonce} onRun={runMission} onCreateTask={data.createTask} onCreateAgent={data.createAgent} onReseed={reseed} busy={busy} />
+        <GoalComposer missions={ws?.missions ?? []} agents={ws?.agents ?? []} roleTemplates={data.roleTemplates} initialLane={composerLane} openNonce={composerOpenNonce} onRun={runMission} onCreateTask={data.createTask} onPreviewPlan={data.previewPlan} onCreateAgent={data.createAgent} onReseed={reseed} busy={busy} />
       </div>
 
       {/* error toast */}
