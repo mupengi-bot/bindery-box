@@ -4,10 +4,10 @@
   "type": "module",
   "scripts": { "dev": "node server.mjs" },
   "dependencies": {
-    "@bindery-box/runtime": "workspace:*",
-    "@bindery-box/data-store": "workspace:*",
-    "@bindery-box/office-mattermost": "workspace:*",
-    "@bindery-box/connectors": "workspace:*",
-    "@bindery-box/knowledge": "workspace:*"
+    "@bindery-box/runtime": "0.1.0-alpha.0",
+    "@bindery-box/data-store": "0.1.0-alpha.0",
+    "@bindery-box/office-mattermost": "0.1.0-alpha.0",
+    "@bindery-box/connectors": "0.1.0-alpha.0",
+    "@bindery-box/knowledge": "0.1.0-alpha.0"
   }
 }

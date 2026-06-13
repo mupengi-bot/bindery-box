@@ -5,8 +5,8 @@
   "main": "src/index.mjs",
   "exports": "./src/index.mjs",
   "dependencies": {
-    "@bindery-box/domain": "workspace:*",
-    "@bindery-box/contracts": "workspace:*",
-    "@bindery-box/policy": "workspace:*"
+    "@bindery-box/domain": "0.1.0-alpha.0",
+    "@bindery-box/contracts": "0.1.0-alpha.0",
+    "@bindery-box/policy": "0.1.0-alpha.0"
   }
 }
