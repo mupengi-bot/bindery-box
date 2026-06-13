@@ -21,10 +21,9 @@
         <span class="tier-chip" id="tier-chip" title="회사 운영 단계">Seed</span>
       </div>
 
-      <!-- Layer switcher (progressive disclosure) -->
+      <!-- Layer switcher (progressive disclosure) · home is the 3D office stage -->
       <nav class="layer-nav" id="layer-nav" aria-label="화면 레이어">
-        <button class="lyr active" data-layer-to="focus">홈</button>
-        <button class="lyr" data-layer-to="office">오피스</button>
+        <button class="lyr active" data-layer-to="focus">오피스</button>
         <button class="lyr" data-layer-to="performance">성과</button>
         <button class="lyr" data-layer-to="process">공정</button>
         <button class="lyr" data-layer-to="organization">조직</button>
@@ -53,30 +52,56 @@
       </div>
     </header>
 
-    <!-- ── FOCUS · front stage (default · minimal) ───────────────────────── -->
-    <main class="focus" id="focus" aria-label="목표 작성">
-      <div class="focus-inner">
+    <!-- ── FOCUS · 3D office stage (default home · simple front + 3D depth) ── -->
+    <main class="focus" id="focus" aria-label="Claw3D Office Stage">
+      <!-- The home IS the virtual office: a pseudo-3D CSS/SVG stage with the
+           Goal Composer floating in front. Heavy market/process/org/log
+           surfaces stay behind the layer buttons. -->
+      <section class="stage" id="stage" aria-label="Claw3D Office Stage · 3D 가상 오피스">
+        <span class="stage-tag" aria-hidden="true">Claw3D Office Stage</span>
 
-        <div class="focus-greeting" id="focus-greeting">
-          <span class="fg-dot"></span><span id="fg-text">회사를 깨우는 중…</span>
+        <!-- Back wall · pipeline status beams (공정 단계 현황) -->
+        <div class="stage-wall" id="office-wall" aria-label="파이프라인 월"></div>
+
+        <!-- Approval alert beacon (surfaces only when approvals are waiting) -->
+        <button class="stage-beacon" id="stage-beacon" data-layer-to="process"
+                aria-label="승인 대기 미션 보기" hidden>
+          <span class="beacon-core" aria-hidden="true"></span>
+          <span class="beacon-txt"><b id="beacon-count">0</b><small>승인 대기</small></span>
+        </button>
+
+        <!-- Pseudo-3D office scene · perspective grid floor + agent desk pods -->
+        <div class="office-scene" id="office-scene">
+          <div class="office-floor" id="office-floor"></div>
         </div>
 
-        <!-- Goal Composer -->
-        <section class="composer" aria-label="목표 작성기">
-          <h1 class="composer-q">오늘 어떤 일을 맡길까요?</h1>
-          <form class="composer-form" id="composer-form">
-            <textarea id="composer-input" rows="1"
-              placeholder="예: 생산 리스크 점검 · 영업 후속 메일 · Scope 3 보고서…"
-              autocomplete="off" spellcheck="false" aria-label="맡길 일"></textarea>
-            <button class="composer-send" id="composer-send" type="submit" aria-label="실행">↑</button>
-          </form>
-          <div class="composer-hint" id="composer-hint">한 줄로 적으면 가장 가까운 미션을 찾아 바로 실행합니다.</div>
-        </section>
+        <!-- Front overlay · greeting + Goal Composer + objective cards -->
+        <div class="stage-front">
+          <div class="focus-greeting" id="focus-greeting">
+            <span class="fg-dot"></span><span id="fg-text">회사를 깨우는 중…</span>
+          </div>
 
-        <!-- 3 objective cards -->
-        <section class="focus-cards" id="focus-cards" aria-label="추천 목표"></section>
+          <section class="composer" aria-label="목표 작성기">
+            <h1 class="composer-q">오늘 어떤 일을 맡길까요?</h1>
+            <form class="composer-form" id="composer-form">
+              <textarea id="composer-input" rows="1"
+                placeholder="예: 생산 리스크 점검 · 영업 후속 메일 · Scope 3 보고서…"
+                autocomplete="off" spellcheck="false" aria-label="맡길 일"></textarea>
+              <button class="composer-send" id="composer-send" type="submit" aria-label="실행">↑</button>
+            </form>
+            <div class="composer-hint" id="composer-hint">한 줄로 적으면 가장 가까운 미션을 찾아 바로 실행합니다.</div>
+          </section>
 
-        <!-- Current flow steps (primary · next action) -->
+          <!-- Objective cards · click highlights the room and runs its mission -->
+          <section class="focus-cards" id="focus-cards" aria-label="추천 목표"></section>
+        </div>
+
+        <!-- Office activity ticker (live narrative beats) -->
+        <div class="office-ticker" id="office-ticker" aria-label="오피스 활동" aria-live="polite"></div>
+      </section>
+
+      <!-- Below the stage · next action flow + compact status + layer buttons -->
+      <div class="focus-inner">
         <section class="focus-flow-card">
           <header class="focus-sec-head">
             <h3 id="focus-flow-title">진행 흐름</h3>
@@ -85,12 +110,10 @@
           <ol class="focus-flow" id="focus-flow"></ol>
         </section>
 
-        <!-- Simple status summary (secondary · progress) -->
         <section class="focus-status" id="focus-status" aria-label="상태 요약"></section>
 
-        <!-- Tertiary layers behind explicit buttons -->
+        <!-- Tertiary layers behind explicit buttons (no always-on menus) -->
         <div class="focus-more" aria-label="상세 레이어">
-          <button class="focus-more-btn office-more" data-layer-to="office"><b>3D 오피스</b><span>아이소메트릭 에이전트 오피스</span></button>
           <button class="focus-more-btn" data-layer-to="performance"><b>성과 마켓</b><span>실적 랭킹·지수·차트</span></button>
           <button class="focus-more-btn" data-layer-to="process"><b>업무 공정</b><span>파이프라인·미션·승인</span></button>
           <button class="focus-more-btn" data-layer-to="organization"><b>조직도</b><span>에이전트·레인·지식</span></button>
@@ -101,31 +124,6 @@
 
     <!-- ── BACKSTAGE · layered sheets (hidden until a layer is selected) ──── -->
     <div class="cockpit" id="cockpit">
-
-      <!-- LAYER · 3D Office (native CSS isometric agent office · Claw-style) -->
-      <section class="layer-panel office-layer" data-lp="office" aria-label="3D 오피스">
-        <header class="layer-head">
-          <button class="layer-back" data-layer-to="focus" aria-label="홈으로">←</button>
-          <div class="layer-title"><h2>3D 오피스</h2><p>에이전트 책상 · 회의실 · 파이프라인 월 · 실시간 이벤트</p></div>
-          <span class="office-asof" id="office-asof" title="실시간 기준 시각">기준 --:--:--</span>
-        </header>
-
-        <!-- Pipeline wall (back wall · 공정 단계 현황) -->
-        <section class="office-wall" id="office-wall" aria-label="파이프라인 월"></section>
-
-        <div class="office-grid">
-          <!-- Isometric office scene (CSS perspective · grid floor · desk pods) -->
-          <section class="office-stage" aria-label="아이소메트릭 오피스">
-            <div class="office-scene" id="office-scene">
-              <div class="office-floor" id="office-floor"></div>
-            </div>
-            <div class="office-legend" id="office-legend"></div>
-          </section>
-
-          <!-- Selected agent panel (반영 + 상세 진입) -->
-          <aside class="office-panel" id="office-panel" aria-label="선택한 에이전트"></aside>
-        </div>
-      </section>
 
       <!-- LAYER · Performance market -->
       <section class="layer-panel" data-lp="performance" aria-label="성과 마켓">
@@ -261,8 +259,7 @@
 
     <!-- ── Mobile bottom nav · layer switcher ────────────────────────────── -->
     <nav class="bottom-nav" aria-label="레이어 전환">
-      <button class="bn active" data-layer-to="focus"><span>◎</span>홈</button>
-      <button class="bn" data-layer-to="office"><span>⌂</span>오피스</button>
+      <button class="bn active" data-layer-to="focus"><span>⌂</span>오피스</button>
       <button class="bn" data-layer-to="performance"><span>≋</span>성과</button>
       <button class="bn" data-layer-to="process"><span>⇉</span>공정</button>
       <button class="bn" data-layer-to="organization"><span>◫</span>조직</button>

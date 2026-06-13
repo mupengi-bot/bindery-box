@@ -789,9 +789,9 @@ body[data-layer="focus"] #search-wrap { display: none; }
 body:not([data-layer="performance"]) #market-status,
 body:not([data-layer="performance"]) #market-asof { display: none; }
 
-/* Home shows focus + hides the whole cockpit. */
-.focus { display: none; flex: 1; }
-body[data-layer="focus"] .focus { display: block; }
+/* Home shows the 3D office stage + hides the whole cockpit. */
+.focus { display: none; flex: 1; min-width: 0; }
+body[data-layer="focus"] .focus { display: flex; flex-direction: column; }
 body[data-layer="focus"] .cockpit { display: none; }
 
 /* Backstage: cockpit becomes a single centered sheet, one layer at a time. */
@@ -813,8 +813,96 @@ body[data-layer="organization"] .layer-panel[data-lp="organization"] { display: 
 .org-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .org-grid .grow { grid-column: 1 / -1; }
 
-/* ── Focus front stage ────────────────────────────────────────────────── */
-.focus-inner { max-width: 720px; margin: 0 auto; padding: clamp(20px, 6vh, 60px) 18px calc(var(--nav-h) + 28px); display: flex; flex-direction: column; gap: 22px; }
+/* ── Claw3D Office Stage (the home IS the 3D virtual office) ───────────────
+   A pseudo-3D CSS/SVG stage: perspective grid floor + billboarded agent desk
+   pods sit behind a floating Goal Composer. Below the stage live the next-flow
+   tracker, a compact status strip and the layer buttons. ─────────────────── */
+.stage {
+  position: relative; width: 100%; overflow: hidden;
+  min-height: clamp(440px, 66vh, 660px);
+  border-bottom: 1px solid var(--line);
+  background:
+    radial-gradient(130% 90% at 50% -16%, rgba(49,130,246,.14), transparent 58%),
+    radial-gradient(80% 60% at 84% 8%, rgba(112,72,232,.08), transparent 60%),
+    linear-gradient(180deg, #fbfcfe 0%, #eef2f7 60%, #e7ecf2 100%);
+}
+/* The "Claw3D Office Stage" wordmark · also the web-smoke marker. */
+.stage-tag {
+  position: absolute; left: 16px; bottom: 12px; z-index: 4;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); padding: 4px 10px; border-radius: 999px;
+  background: rgba(255,255,255,.7); border: 1px solid var(--line);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: none;
+}
+
+/* Pipeline back-wall: a slim status strip pinned to the top of the stage. */
+.stage-wall {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 1;
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 1px;
+  padding: 7px 14px 14px;
+  background: linear-gradient(180deg, rgba(238,242,247,.92), rgba(238,242,247,0));
+}
+.stage-wall .ow-panel { background: transparent; border: 0; box-shadow: none; flex-direction: row; align-items: baseline; gap: 6px; padding: 2px 4px; }
+.stage-wall .ow-count { font-size: 15px; }
+.stage-wall .ow-label { font-size: 9px; }
+.stage-wall .list-empty { grid-column: 1 / -1; }
+
+/* Front overlay: greeting + composer + objective cards float above the floor. */
+.stage-front {
+  position: absolute; left: 50%; top: clamp(48px, 8vh, 72px); z-index: 3;
+  transform: translateX(-50%); width: min(580px, 92%);
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+}
+.stage-front .focus-cards { width: 100%; }
+
+/* The office scene fills the stage as the ambient 3D backdrop. */
+.stage .office-scene {
+  position: absolute; inset: 0; height: auto; width: 100%;
+  border: 0; border-radius: 0; box-shadow: none;
+  perspective-origin: 50% 26%;
+}
+/* Veil so the composer stays legible over the busy floor. */
+.stage .office-scene::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(251,252,254,.72) 0%, rgba(251,252,254,.12) 30%, transparent 52%);
+}
+
+/* Approval alert beacon (top-right of the stage). */
+.stage-beacon {
+  position: absolute; top: 14px; right: 16px; z-index: 5;
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 7px 13px 7px 9px; border-radius: 999px;
+  background: rgba(255,255,255,.94); border: 1px solid rgba(112,72,232,.4);
+  box-shadow: 0 10px 24px -12px rgba(112,72,232,.6); cursor: pointer; transition: .15s;
+}
+.stage-beacon:hover { transform: translateY(-1px); box-shadow: 0 12px 26px -12px rgba(112,72,232,.7); }
+.stage-beacon[hidden] { display: none; }
+.beacon-core { position: relative; width: 12px; height: 12px; border-radius: 50%; background: var(--violet); box-shadow: 0 0 0 0 rgba(112,72,232,.5); animation: beacon 1.8s ease-out infinite; flex-shrink: 0; }
+@keyframes beacon { 0% { box-shadow: 0 0 0 0 rgba(112,72,232,.45); } 70%,100% { box-shadow: 0 0 0 10px rgba(112,72,232,0); } }
+.beacon-txt { display: flex; flex-direction: column; line-height: 1.05; text-align: left; }
+.beacon-txt b { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--violet); }
+.beacon-txt small { font-size: 9px; font-weight: 700; letter-spacing: .04em; color: var(--muted); }
+
+/* Office activity ticker (live narrative marquee along the stage floor). */
+.office-ticker {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; height: 34px;
+  display: flex; align-items: center; overflow: hidden;
+  background: linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,.92));
+  border-top: 1px solid var(--line); -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.tk-track { display: inline-flex; align-items: center; gap: 26px; white-space: nowrap; padding-left: 24px; animation: tkscroll 32s linear infinite; }
+@keyframes tkscroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.tk-item { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--text-2); }
+.tk-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.tk-item[data-lvl="running"] .tk-dot { background: var(--running); }
+.tk-item[data-lvl="success"] .tk-dot { background: var(--success); }
+.tk-item[data-lvl="pending"] .tk-dot { background: var(--pending); }
+.tk-item[data-lvl="error"]   .tk-dot { background: var(--error); }
+.tk-empty { padding-left: 24px; font-size: 11px; color: var(--muted); }
+
+/* ── Below-stage front matter (next flow · status · layer buttons) ───────── */
+.focus-inner { max-width: 720px; margin: 0 auto; width: 100%; padding: 22px 18px calc(var(--nav-h) + 28px); display: flex; flex-direction: column; gap: 18px; }
 
 .focus-greeting { display: inline-flex; align-items: center; gap: 8px; align-self: center; font-size: 12.5px; color: var(--text-2); padding: 6px 13px; border-radius: 999px; background: var(--bg-1); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .fg-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
@@ -896,7 +984,7 @@ body[data-layer="organization"] .layer-panel[data-lp="organization"] { display: 
    center meeting room · pipeline back-wall · floating live event bubbles ·
    selected-agent side panel. Toss-like light tone + blue accent preserved.
    ========================================================================== */
-.office-layer { --tilt: 56deg; }
+.stage { --tilt: 56deg; }
 .office-asof { margin-left: auto; font-size: 11px; color: var(--muted); font-family: var(--mono); white-space: nowrap; }
 
 /* ── Pipeline back-wall (공정 단계 현황) ──────────────────────────────── */
@@ -949,6 +1037,20 @@ body[data-layer="organization"] .layer-panel[data-lp="organization"] { display: 
   box-shadow: 0 0 0 1px rgba(255,255,255,.5) inset;
 }
 
+/* Mission-node walkways (zone → center hub), drawn on the tilted floor. */
+.office-paths { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.office-path { stroke: color-mix(in srgb, var(--zc) 55%, transparent); stroke-width: .5; fill: none; opacity: .55; }
+.office-path.live {
+  stroke: var(--zc); stroke-width: .7; opacity: .95;
+  stroke-dasharray: 3 2.4; animation: pathflow 1.1s linear infinite;
+}
+.office-path.sel { stroke-width: .9; opacity: 1; }
+@keyframes pathflow { to { stroke-dashoffset: -10.8; } }
+.office-node { fill: color-mix(in srgb, var(--zc) 70%, #fff); stroke: #fff; stroke-width: .4; }
+.office-node.live { animation: nodepulse 2s ease-in-out infinite; }
+.office-node.hub { fill: var(--primary); }
+@keyframes nodepulse { 0%,100% { opacity: .7; } 50% { opacity: 1; } }
+
 /* Lane zone footprints (lie flat on the floor) */
 .office-zone {
   position: absolute; width: 32%; height: 30%;
@@ -958,6 +1060,7 @@ body[data-layer="organization"] .layer-panel[data-lp="organization"] { display: 
   border: 1px dashed color-mix(in srgb, var(--zc) 45%, transparent);
 }
 .office-zone.live { background: color-mix(in srgb, var(--zc) 20%, transparent); animation: zonepulse 2.6s ease-in-out infinite; }
+.office-zone.sel { border-style: solid; border-color: color-mix(in srgb, var(--zc) 70%, transparent); background: color-mix(in srgb, var(--zc) 24%, transparent); }
 @keyframes zonepulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--zc) 30%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--zc) 8%, transparent); } }
 .oz-tag {
   position: absolute; left: 50%; bottom: 50%;
@@ -1043,6 +1146,28 @@ body[data-layer="organization"] .layer-panel[data-lp="organization"] { display: 
 .desk-pod.st-blocked .pod-av { box-shadow: 0 0 0 2px var(--red), 0 8px 16px -8px rgba(240,68,82,.6); }
 @keyframes podwork { 0%,100% { box-shadow: 0 8px 16px -8px rgba(49,130,246,.5), 0 0 0 0 rgba(49,130,246,.4); } 50% { box-shadow: 0 8px 16px -8px rgba(49,130,246,.6), 0 0 0 5px rgba(49,130,246,.12); } }
 
+/* Status beam — a vertical light column rising from a running desk. */
+.pod-beam {
+  position: absolute; left: 50%; bottom: 0; width: 18px; height: 64px;
+  transform: translate(-50%, -100%) rotateX(calc(-1 * var(--tilt)));
+  transform-origin: center bottom; pointer-events: none;
+  background: linear-gradient(180deg, rgba(49,130,246,0), rgba(49,130,246,.42));
+  border-radius: 9px 9px 0 0; filter: blur(1px);
+  animation: beam 1.9s ease-in-out infinite;
+}
+@keyframes beam { 0%,100% { opacity: .45; height: 54px; } 50% { opacity: .85; height: 70px; } }
+
+/* Clickable room tag (routes to the work-process layer). */
+.oz-tag { cursor: pointer; transition: transform .14s, box-shadow .14s; }
+.oz-tag:hover { transform: translateX(-50%) rotateX(calc(-1 * var(--tilt))) translateY(-2px); box-shadow: 0 8px 16px -8px rgba(17,24,40,.6); }
+.oz-tag:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(49,130,246,.45); }
+
+/* Extra desk-pod status accents (data-driven). */
+.st-dot.st-waiting_approval { background: var(--pending); box-shadow: 0 0 6px rgba(112,72,232,.6); }
+.st-dot.st-completed { background: var(--success); }
+.desk-pod.st-waiting_approval .pod-av { box-shadow: 0 0 0 2px var(--violet), 0 8px 16px -8px rgba(112,72,232,.6); }
+.desk-pod.st-completed .pod-av { box-shadow: 0 0 0 2px var(--green), 0 8px 16px -8px rgba(21,196,126,.55); }
+
 /* Floating live event bubbles */
 .office-bubble {
   position: absolute; transform: translate(-50%, -100%);
@@ -1110,19 +1235,36 @@ body[data-layer="organization"] .layer-panel[data-lp="organization"] { display: 
 .op-chip-av { width: 20px; height: 20px; border-radius: 7px; display: grid; place-items: center; font-size: 9px; font-weight: 800; color: #fff; }
 .op-chip-name { max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ── Office responsive ───────────────────────────────────────────────── */
+/* ── Stage responsive ────────────────────────────────────────────────────
+   Desktop: wide 3D office with the composer floating over the floor.
+   Mobile: composer first, then a simplified flat isometric map below it. ── */
 @media (max-width: 980px) {
-  .office-grid { grid-template-columns: 1fr; }
-  .office-panel { position: static; }
+  .stage { min-height: clamp(380px, 56vh, 520px); }
+  .stage-front { width: min(560px, 94%); }
 }
 @media (max-width: 760px) {
-  .office-layer { --tilt: 50deg; }
-  .office-asof { display: none; }
-  .office-scene { height: clamp(300px, 46vh, 380px); perspective: 820px; }
+  /* Stack the stage: composer first, simplified isometric map underneath. */
+  .stage { --tilt: 48deg; min-height: 0; display: flex; flex-direction: column; }
+  .stage-wall { position: relative; padding: 8px 12px; background: none; order: 1; }
+  .stage-front { position: static; transform: none; left: auto; top: auto; width: 100%; padding: 16px 14px 4px; order: 0; }
+  .stage .office-scene { position: relative; inset: auto; order: 2; height: clamp(248px, 40vh, 320px); perspective: 760px; }
+  .stage .office-scene::after { background: linear-gradient(180deg, rgba(251,252,254,.45), transparent 36%); }
   .office-floor { left: 5%; right: 5%; }
-  .ow-count { font-size: 18px; }
-  .ow-label { font-size: 9px; }
-  .op-roster { max-height: 120px; overflow-y: auto; }
+  .office-ticker { position: relative; order: 3; }
+  .stage-tag { position: relative; left: auto; bottom: auto; order: 4; align-self: flex-start; margin: 8px 0 0 12px; }
+  .stage-beacon { top: 8px; right: 10px; padding: 5px 11px 5px 7px; }
+  .composer-q { font-size: clamp(19px, 6vw, 24px); }
+  .ow-count { font-size: 14px; }
+}
+/* Guard against horizontal overflow on the narrowest phones (≤390px). */
+@media (max-width: 410px) {
+  .stage-front { padding-left: 10px; padding-right: 10px; }
+  .focus-cards { gap: 8px; }
+  .stage-wall { gap: 0; }
 }
 
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+  .tk-track { transform: none; flex-wrap: wrap; white-space: normal; }
+  .office-ticker { height: auto; }
+}

@@ -782,12 +782,33 @@ function renderOfficeFloor(ws) {
   // Render back-to-front (smaller y first) so nearer desks layer on top.
   const podHtml = pods.sort((p, q) => p.y - q.y).map((p) => p.html);
 
-  // Zone tiles (lane footprints on the floor).
+  // Mission-node paths: animated routes from each lane room to the center
+  // meeting hub. Live (running) lanes get a flowing dash; the selected lane is
+  // emphasised. Drawn on the tilted floor so they read as 3D walkways.
+  const HUB = { x: 50, y: 52 };
+  const pathHtml = Object.entries(OFFICE_ZONES).map(([id, z]) => {
+    const lane = (ws.lanes || []).find((l) => l.id === id);
+    const live = lane && lane.status === "running";
+    const sel = view.selectedLaneId === id;
+    return `<line class="office-path${live ? " live" : ""}${sel ? " sel" : ""}"
+      x1="${z.x}" y1="${z.y}" x2="${HUB.x}" y2="${HUB.y}" style="--zc:${z.color}" />`;
+  }).join("");
+  const nodeHtml = Object.entries(OFFICE_ZONES).map(([id, z]) => {
+    const lane = (ws.lanes || []).find((l) => l.id === id);
+    const live = lane && lane.status === "running";
+    return `<circle class="office-node${live ? " live" : ""}" cx="${z.x}" cy="${z.y}" r="1.7" style="--zc:${z.color}" />`;
+  }).join("");
+  const pathsSvg = `<svg class="office-paths" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    ${pathHtml}${nodeHtml}<circle class="office-node hub" cx="${HUB.x}" cy="${HUB.y}" r="2.2" /></svg>`;
+
+  // Zone tiles (lane footprints on the floor) — each room is a button that
+  // routes to the work-process layer.
   const zoneHtml = Object.entries(OFFICE_ZONES).map(([id, z]) => {
     const lane = (ws.lanes || []).find((l) => l.id === id);
     const live = lane && lane.status === "running";
-    return `<div class="office-zone${live ? " live" : ""}" style="left:${z.x}%;top:${z.y}%;--zc:${z.color}">
-      <span class="oz-tag"><i>${esc(z.glyph)}</i>${esc(z.label)}${lane ? ` · ${lane.done ?? 0}/${lane.total ?? 0}` : ""}</span>
+    const sel = view.selectedLaneId === id;
+    return `<div class="office-zone${live ? " live" : ""}${sel ? " sel" : ""}" style="left:${z.x}%;top:${z.y}%;--zc:${z.color}">
+      <button class="oz-tag" data-room="${esc(id)}" title="${esc(z.label)} 공정 보기"><i>${esc(z.glyph)}</i>${esc(z.label)}${lane ? ` · ${lane.done ?? 0}/${lane.total ?? 0}` : ""}</button>
     </div>`;
   }).join("");
 
@@ -819,6 +840,7 @@ function renderOfficeFloor(ws) {
 
   floor.innerHTML = `
     <div class="floor-grid" aria-hidden="true"></div>
+    ${pathsSvg}
     ${zoneHtml}
     ${meetingHtml}
     ${podHtml.join("")}
@@ -833,6 +855,16 @@ function renderOfficeFloor(ws) {
       renderOfficePanel(ws);
       if (perfById(id)) openAgentDetail(id);
     }));
+
+  // Room (lane zone) click → jump to the work-process layer for that lane.
+  floor.querySelectorAll("[data-room]").forEach((el) =>
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      view.selectedLaneId = el.dataset.room;
+      view.perfCategory = el.dataset.room;
+      if (typeof renderFilters === "function" && view.ws) { renderFilters(view.ws); renderPerfBoard(view.ws); }
+      setLayer("process");
+    }));
 }
 
 function officePod(a, x, y, zone) {
@@ -845,6 +877,7 @@ function officePod(a, x, y, zone) {
     style="left:${x}%;top:${y}%;--zc:${zone.color}" title="${esc(a.name)} · ${esc(a.laneLabel || "")}"
     aria-label="${esc(a.name)} 책상 · ${esc(st)}">
     <span class="pod-shadow" aria-hidden="true"></span>
+    ${st === "running" ? `<span class="pod-beam" aria-hidden="true"></span>` : ""}
     <span class="pod-card">
       ${task ? `<span class="pod-bubble">${task}</span>` : ""}
       <span class="pod-av" style="background:${hueColor(a.id || a.name)}">${esc(initials(a.name))}<i class="pod-st st-dot st-${esc(st)}"></i></span>
@@ -927,12 +960,46 @@ function renderOfficePanel(ws) {
   });
 }
 
+// Approval alert beacon — surfaces on the stage only when missions wait for a
+// decision; clicking jumps to the work-process layer (wired via data-layer-to).
+function renderStageBeacon(ws) {
+  const el = $("stage-beacon");
+  if (!el) return;
+  const stages = ws.pipeline?.stages || [];
+  const waiting = stages.find((s) => s.id === "waiting_approval")?.count
+    ?? (ws.missions || []).filter((m) => m.status === "waiting_approval").length;
+  el.hidden = !(waiting > 0);
+  const c = $("beacon-count");
+  if (c) c.textContent = waiting || 0;
+}
+
+// Office activity ticker — a marquee of the latest live narrative beats so the
+// stage feels alive even before a goal is assigned.
+function renderOfficeTicker(ws) {
+  const el = $("office-ticker");
+  if (!el) return;
+  const beats = (ws.stream || []).slice(0, 8);
+  if (!beats.length) {
+    el.innerHTML = `<div class="tk-empty">오피스 대기 중 · 목표를 맡기면 활동이 흐릅니다.</div>`;
+    return;
+  }
+  const items = beats.map((b) => {
+    const who = esc(b.actor || b.agentName || b.laneLabel || "agent");
+    const what = esc(String(b.title || "").slice(0, 52));
+    return `<span class="tk-item" data-lvl="${esc(b.level || "info")}"><i class="tk-dot"></i>${who} · ${what}</span>`;
+  }).join("");
+  // Duplicate the run so the CSS marquee loops seamlessly.
+  el.innerHTML = `<div class="tk-track">${items}${items}</div>`;
+}
+
 function renderOffice(ws) {
   if ($("office-asof")) $("office-asof").textContent = `기준 ${fmtTime(ws.market?.asOf || ws.generatedAt)}`;
   renderOfficeWall(ws);
   renderOfficeFloor(ws);
   renderOfficeLegend(ws);
   renderOfficePanel(ws);
+  renderStageBeacon(ws);
+  renderOfficeTicker(ws);
 }
 
 // ── Onboarding overlay (오늘 뭐부터 할까요? → objective cards → start) ──────
@@ -1135,6 +1202,7 @@ async function submitComposer() {
     : `‘${hit.label}’ 미션을 시작합니다.`;
   if (inp) inp.value = "";
   renderFocus(view.ws);
+  renderOfficeFloor(view.ws);   // clear/refresh room highlight on the stage
   await runTask(hit.taskId);
 }
 
@@ -1151,12 +1219,14 @@ async function selectObjective(laneId) {
     view.selectedLabel = lane.label;
     if (hint) hint.textContent = `‘${lane.label}’ 라인에 지금 실행할 미션이 없습니다.`;
     renderFocus(view.ws);
+    renderOfficeFloor(view.ws);  // still highlight the chosen room
     return;
   }
   view.selectedTaskId = pick.taskId;
   view.selectedLabel = pick.label;
   if (hint) hint.textContent = `‘${lane.label}’ 라인의 ‘${pick.label}’ 미션을 시작합니다.`;
   renderFocus(view.ws);
+  renderOfficeFloor(view.ws);    // highlight the chosen room + its walkway
   await runTask(pick.taskId);
 }
 
