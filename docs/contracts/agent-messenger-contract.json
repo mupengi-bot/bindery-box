@@ -178,6 +178,17 @@
         "correlationId"
       ],
       "description": "Post a product-safe message into the human office/messenger."
+    },
+    {
+      "type": "agent.create",
+      "surface": "mission-control",
+      "requiredFields": [
+        "workspaceId",
+        "name",
+        "role",
+        "requestedBy"
+      ],
+      "description": "Create a public-safe demo staff member/person with lane persona and role prompt."
     }
   ],
   "events": [
@@ -251,6 +262,17 @@
         "audit"
       ],
       "description": "A messenger post was produced from an event."
+    },
+    {
+      "type": "agent.created",
+      "source": "control-plane",
+      "projection": [
+        "workstream",
+        "3d-office",
+        "live-log",
+        "audit"
+      ],
+      "description": "A new agent/person joined the office with safe default capabilities."
     }
   ],
   "adapters": {

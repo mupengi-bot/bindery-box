@@ -37,7 +37,15 @@ async function main() {
   const know = await handleRequest({ method: "GET", pathname: "/api/knowledge/search", searchParams: new URLSearchParams({ q: "납기" }) });
   check("GET knowledge/search → results[]", know.status === 200 && Array.isArray(know.body.results));
 
-  // 7) task run + approval flow — pick a runnable mission from the workstream
+  // 7) agent creation flow — create a safe custom staff member
+  const createAgent = await handleRequest({
+    method: "POST",
+    pathname: "/api/workspaces/default/agents",
+    body: { name: "Demo Planner", role: "계획 담당", lane: "control", requestedBy: "ci" },
+  });
+  check("POST workspace agents → agent.create", createAgent.status === 200 && createAgent.body.ok === true && createAgent.body.result?.agent?.prompt, createAgent.body.result?.agent?.id);
+
+  // 8) task run + approval flow — pick a runnable mission from the workstream
   const runnable = ws.body.missions.find((m) => m.runnable);
   check("workstream has a runnable mission", !!runnable, runnable?.taskId);
   if (runnable) {

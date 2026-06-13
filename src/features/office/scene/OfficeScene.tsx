@@ -4,10 +4,18 @@ import { Html } from "@react-three/drei";
 import { useMemo } from "react";
 import * as THREE from "three";
 import { deriveRoutes } from "../routing";
-import type { Mission, WorkstreamAgent } from "../types";
+import type { LaneId, Mission, WorkstreamAgent } from "../types";
 import { AgentAvatar } from "./AgentAvatar";
 import { Desk } from "./Desk";
-import { FLOOR, LANE_ORDER, LANE_ZONES, MEETING_ROOM, STATUS_COLOR } from "./sceneConfig";
+import { FLOOR, LANE_ORDER, LANE_ZONES, MEETING_ROOM, STATUS_COLOR, type Vec2 } from "./sceneConfig";
+
+
+export interface MoveTarget {
+  x: number;
+  z: number;
+  issuedAt: number;
+  source: "floor" | "zone";
+}
 
 interface Placed {
   agent: WorkstreamAgent;
@@ -47,15 +55,23 @@ export interface OfficeSceneProps {
   agents: WorkstreamAgent[];
   missions: Mission[];
   selectedId: string | null;
+  moveTargets: Record<string, MoveTarget>;
   onSelect: (id: string) => void;
+  onMoveSelected: (target: MoveTarget) => void;
+  onRequestLane: (lane: LaneId) => void;
 }
 
-export function OfficeScene({ agents, missions, selectedId, onSelect }: OfficeSceneProps) {
+export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelect, onMoveSelected, onRequestLane }: OfficeSceneProps) {
   const placed = useMemo(() => layoutAgents(agents), [agents]);
   const routeByAgent = useMemo(() => {
     const seats = new Map(placed.map((p) => [p.agent.id, p.seat]));
     return deriveRoutes(agents, (agentId) => seats.get(agentId) ?? [0, 0], missions);
   }, [agents, missions, placed]);
+
+  const issueMove = (point: { x: number; z: number }, source: "floor" | "zone" = "floor") => {
+    if (!selectedId) return;
+    onMoveSelected({ x: point.x, z: point.z, issuedAt: Date.now(), source });
+  };
 
   return (
     <group>
@@ -75,7 +91,7 @@ export function OfficeScene({ agents, missions, selectedId, onSelect }: OfficeSc
       />
 
       {/* floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow onClick={(e) => { e.stopPropagation(); issueMove(e.point); }}>
         <planeGeometry args={[FLOOR.width, FLOOR.depth]} />
         <meshStandardMaterial color="#0e1424" roughness={0.96} metalness={0.04} />
       </mesh>
@@ -115,6 +131,7 @@ export function OfficeScene({ agents, missions, selectedId, onSelect }: OfficeSc
                 {zone.glyph} {zone.label}
               </div>
             </Html>
+            <WorkRequestStation laneId={laneId} onRequestLane={onRequestLane} onMoveSelected={issueMove} selected={!!selectedId} />
           </group>
         );
       })}
@@ -153,6 +170,11 @@ export function OfficeScene({ agents, missions, selectedId, onSelect }: OfficeSc
       {/* desks + agents */}
       {placed.map((p) => {
         const active = p.agent.status === "running";
+        const moveTarget = moveTargets[p.agent.id];
+        const baseRoute = routeByAgent.get(p.agent.id);
+        const route = moveTarget
+          ? { agentId: p.agent.id, destination: "huddle" as const, note: "이동 명령", waypoints: [p.seat as Vec2, [moveTarget.x, moveTarget.z] as Vec2], target: [moveTarget.x, moveTarget.z] as Vec2, moving: true }
+          : baseRoute;
         return (
           <group key={p.agent.id}>
             <Desk
@@ -168,7 +190,7 @@ export function OfficeScene({ agents, missions, selectedId, onSelect }: OfficeSc
               status={p.agent.status}
               home={p.seat}
               rally={p.rally}
-              route={routeByAgent.get(p.agent.id)}
+              route={route}
               phase={p.phase}
               selected={selectedId === p.agent.id}
               onSelect={onSelect}
@@ -176,6 +198,60 @@ export function OfficeScene({ agents, missions, selectedId, onSelect }: OfficeSc
           </group>
         );
       })}
+
+      {Object.entries(moveTargets).map(([agentId, target]) => (
+        <MoveTargetMarker key={`${agentId}:${target.issuedAt}`} target={target} />
+      ))}
+    </group>
+  );
+}
+
+function WorkRequestStation({ laneId, onRequestLane, onMoveSelected, selected }: { laneId: LaneId; onRequestLane: (lane: LaneId) => void; onMoveSelected: (point: { x: number; z: number }, source?: "floor" | "zone") => void; selected: boolean }) {
+  const zone = LANE_ZONES[laneId];
+  const x = zone.center[0];
+  const z = zone.center[1] - Math.sign(zone.center[1] || 1) * (zone.half[1] - 1.1);
+  return (
+    <group position={[x, 0, z]}>
+      <mesh
+        position={[0, 0.08, 0]}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (selected) onMoveSelected({ x, z }, "zone");
+          onRequestLane(laneId);
+        }}
+        onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
+        onPointerOut={() => { document.body.style.cursor = "default"; }}
+      >
+        <cylinderGeometry args={[0.72, 0.72, 0.16, 32]} />
+        <meshStandardMaterial color={zone.color} emissive={zone.color} emissiveIntensity={0.35} roughness={0.35} transparent opacity={0.88} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.19, 0]}>
+        <ringGeometry args={[0.78, 0.95, 36]} />
+        <meshBasicMaterial color="#eaf0ff" transparent opacity={0.5} side={THREE.DoubleSide} />
+      </mesh>
+      <Html position={[0, 1.2, 0]} center distanceFactor={13} pointerEvents="none">
+        <div style={{ whiteSpace: "nowrap", padding: "5px 9px", borderRadius: 999, background: "rgba(9,14,29,0.84)", border: `1px solid ${zone.color}99`, color: "#eaf0ff", fontSize: 10.5, fontWeight: 800, boxShadow: "0 8px 18px rgba(0,0,0,0.34)" }}>
+          ＋ 업무 요청
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+function MoveTargetMarker({ target }: { target: MoveTarget }) {
+  return (
+    <group position={[target.x, 0.055, target.z]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.42, 0.62, 36]} />
+        <meshBasicMaterial color="#21d4a8" transparent opacity={0.92} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.1, 24]} />
+        <meshBasicMaterial color="#21d4a8" transparent opacity={0.88} />
+      </mesh>
+      <Html position={[0, 0.8, 0]} center distanceFactor={14} pointerEvents="none">
+        <div className="bx-chip" style={{ color: "#21d4a8", background: "rgba(7,12,24,0.82)" }}>이동 좌표</div>
+      </Html>
     </group>
   );
 }

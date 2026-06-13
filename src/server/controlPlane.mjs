@@ -154,6 +154,27 @@ export async function handleRequest({
     return { status: 200, body: { ok: outcome.ok, decision: outcome.decision, result: outcome.result, state: outcome.state } };
   }
 
+  const agentCreateMatch = route.match(/^\/workspaces\/([^/]+)\/agents$/);
+  if (method === "POST" && agentCreateMatch) {
+    const outcome = await executeCommand({
+      store,
+      command: {
+        type: CommandType.agentCreate,
+        workspaceId: agentCreateMatch[1],
+        name: body.name ?? "New Agent",
+        role: body.role ?? "AI 직원",
+        lane: body.lane ?? "control",
+        persona: body.persona,
+        prompt: body.prompt,
+        capabilities: body.capabilities,
+        kpi: body.kpi,
+        requestedBy: body.requestedBy ?? "operator",
+      },
+      office: office(),
+    });
+    return { status: 200, body: { ok: outcome.ok, decision: outcome.decision, result: outcome.result, state: outcome.state } };
+  }
+
   const decisionMatch = route.match(/^\/approvals\/([^/]+)\/decision$/);
   if (method === "POST" && decisionMatch) {
     const outcome = await executeCommand({

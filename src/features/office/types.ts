@@ -18,6 +18,9 @@ export interface WorkstreamAgent {
   focus: string;
   activeMission: string | null;
   capabilities: string[];
+  persona?: string;
+  prompt?: string;
+  origin?: string;
   kpi: string;
 }
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LANE_ZONES } from "../scene/sceneConfig";
-import type { LaneId, Mission } from "../types";
+import type { LaneId, Mission, WorkstreamAgent } from "../types";
 import { levelColor } from "./ui";
 
 // Goal Composer with progressive disclosure:
@@ -11,19 +11,41 @@ import { levelColor } from "./ui";
 //   level 2  → full mission board with lane filter, priority and approval flags
 export function GoalComposer({
   missions,
+  agents,
+  initialLane = "all",
+  openNonce = 0,
   onRun,
+  onCreateAgent,
   onReseed,
   busy,
 }: {
   missions: Mission[];
+  agents: WorkstreamAgent[];
+  initialLane?: LaneId | "all";
+  openNonce?: number;
   onRun: (taskId: string) => void;
+  onCreateAgent: (input: { name: string; role: string; lane: string; persona?: string; prompt?: string; capabilities?: string[]; kpi?: string }) => Promise<void>;
   onReseed: () => void;
   busy: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [intent, setIntent] = useState("");
-  const [lane, setLane] = useState<LaneId | "all">("all");
+  const [lane, setLane] = useState<LaneId | "all">(initialLane);
+  const [hireOpen, setHireOpen] = useState(false);
+  const [newName, setNewName] = useState("New Operator");
+  const [newRole, setNewRole] = useState("업무 자동화 담당");
+
+  useEffect(() => {
+    if (openNonce <= 0) return;
+    setOpen(true);
+    setAdvanced(true);
+    setLane(initialLane);
+    if (initialLane !== "all") {
+      const label = LANE_ZONES[initialLane].label.split(" · ")[0];
+      setIntent(`${label} 구역에 업무 요청`);
+    }
+  }, [initialLane, openNonce]);
 
   const runnable = useMemo(() => missions.filter((m) => m.runnable), [missions]);
 
@@ -72,8 +94,11 @@ export function GoalComposer({
         <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.18em", color: "var(--bx-accent)" }}>
           GOAL COMPOSER
         </span>
-        <span style={{ fontSize: 11, color: "var(--bx-muted)" }}>· 목표를 적고 매칭된 미션을 디스패치하세요</span>
+        <span style={{ fontSize: 11, color: "var(--bx-muted)" }}>· 구역을 누르거나 직원을 선택해 업무를 맡기세요</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button onClick={() => setHireOpen((v) => !v)} style={ghostBtn}>
+            직원 생성
+          </button>
           <button onClick={() => setAdvanced((v) => !v)} style={ghostBtn}>
             {advanced ? "간단히" : "고급"}
           </button>
@@ -124,6 +149,31 @@ export function GoalComposer({
               color={LANE_ZONES[l].color}
             />
           ))}
+        </div>
+      )}
+
+
+      {hireOpen && (
+        <div className="bx-panel" style={{ marginTop: 10, padding: 11, borderRadius: 12, background: "rgba(255,255,255,0.025)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: "var(--bx-accent)", fontWeight: 900, letterSpacing: "0.08em" }}>CREATE AGENT</span>
+            <span style={{ fontSize: 10.5, color: "var(--bx-muted)" }}>역할 프롬프트가 자동 생성됩니다 · 현재 {agents.length}명</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름" style={inputMini} />
+            <input value={newRole} onChange={(e) => setNewRole(e.target.value)} placeholder="역할" style={inputMini} />
+            <button
+              onClick={async () => {
+                const targetLane = lane === "all" ? "control" : lane;
+                await onCreateAgent({ name: newName, role: newRole, lane: targetLane });
+                setHireOpen(false);
+              }}
+              disabled={busy || !newName.trim() || !newRole.trim()}
+              style={miniBtn}
+            >
+              합류
+            </button>
+          </div>
         </div>
       )}
 
@@ -196,6 +246,16 @@ function Pill({ active, onClick, label, color }: { active: boolean; onClick: () 
     </button>
   );
 }
+
+const inputMini: React.CSSProperties = {
+  background: "rgba(8,12,24,0.7)",
+  border: "1px solid var(--bx-border)",
+  borderRadius: 9,
+  padding: "8px 10px",
+  color: "var(--bx-text)",
+  fontSize: 12,
+  outline: "none",
+};
 
 const primaryBtn: React.CSSProperties = {
   padding: "11px 18px",

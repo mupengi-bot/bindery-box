@@ -6,6 +6,7 @@ import { nowIso, makeId } from "../../domain/src/index.mjs";
 export const CommandType = Object.freeze({
   taskRun: "task.run",
   taskCreate: "task.create",
+  agentCreate: "agent.create",
   approvalDecide: "approval.decide",
   userMessageIngest: "user.message.ingest",
   agentRunEnqueue: "agent.run.enqueue",
@@ -28,6 +29,7 @@ export const EventType = Object.freeze({
   toolCallCompleted: "tool.call.completed",
   approvalRequested: "approval.requested",
   approvalDecided: "approval.decided",
+  agentCreated: "agent.created",
   officeMessagePosted: "office.message.posted",
   auditAppended: "audit.appended"
 });
@@ -36,6 +38,7 @@ export const EventType = Object.freeze({
 const COMMAND_SCHEMAS = {
   [CommandType.taskRun]: ["taskId", "requestedBy"],
   [CommandType.taskCreate]: ["workspaceId", "title", "requestedBy"],
+  [CommandType.agentCreate]: ["workspaceId", "name", "role", "requestedBy"],
   [CommandType.approvalDecide]: ["approvalId", "decision", "decidedBy"],
   [CommandType.userMessageIngest]: ["workspaceId", "provider", "channelRef", "senderRef", "text", "providerEventId"],
   [CommandType.agentRunEnqueue]: ["workspaceId", "taskId", "agentId", "requestedBy", "goal"],

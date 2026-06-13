@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import type { OfficeData } from "../useOfficeData";
+import type { LaneId } from "../types";
 import { AgentPanel } from "./AgentPanel";
 import { GoalComposer } from "./GoalComposer";
 import { LiveProcess } from "./LiveProcess";
@@ -12,10 +13,14 @@ export function Hud({
   data,
   selectedId,
   onSelect,
+  composerLane = "all",
+  composerOpenNonce = 0,
 }: {
   data: OfficeData;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  composerLane?: LaneId | "all";
+  composerOpenNonce?: number;
 }) {
   const [sheet, setSheet] = useState<SheetId>(null);
   const [busy, setBusy] = useState(false);
@@ -104,7 +109,7 @@ export function Hud({
 
       {/* bottom-center: goal composer */}
       <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, padding: "0 200px" }}>
-        <GoalComposer missions={ws?.missions ?? []} onRun={runMission} onReseed={reseed} busy={busy} />
+        <GoalComposer missions={ws?.missions ?? []} agents={ws?.agents ?? []} initialLane={composerLane} openNonce={composerOpenNonce} onRun={runMission} onCreateAgent={data.createAgent} onReseed={reseed} busy={busy} />
       </div>
 
       {/* error toast */}

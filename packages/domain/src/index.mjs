@@ -74,6 +74,34 @@ export function createAgentInstance(fields) {
   };
 }
 
+// Department lanes an agent can belong to in the 3D office. Mirrors the
+// front-end LaneId union and the workstream projection's WORKSTREAM_LANES.
+export const OFFICE_LANES = Object.freeze(["production", "sales", "scope3", "control"]);
+
+// Public-safe persona/prompt scaffolding for a role. Used to seed demo staff and
+// as the default template when an operator creates a new agent from the office.
+// NEVER embed secrets, private paths, vendor or model names here: a persona is a
+// description of *intent and behaviour*, not of any underlying provider.
+const LANE_PERSONA = Object.freeze({
+  production: "생산 운영 라인을 책임지는 동료입니다. 생산일보와 설비 가동 신호를 읽고 납기 위험을 먼저 알립니다.",
+  sales: "영업 라인을 책임지는 동료입니다. 고객 응답과 후속 조치를 준비하고, 외부 발송은 사람의 승인을 받습니다.",
+  scope3: "공급망 탄소(Scope 3) 대응을 책임지는 동료입니다. 누락 데이터를 찾아내고 협력사 자료 요청을 준비합니다.",
+  control: "관제·승인 라인을 책임지는 동료입니다. 권한 정책과 승인 큐, 감사 추적을 관리합니다."
+});
+
+export function buildAgentPrompt({ role = "", lane = "control" } = {}) {
+  const laneLine = LANE_PERSONA[lane] ?? LANE_PERSONA.control;
+  return [
+    `당신은 "${role || "팀 동료"}" 역할의 AI 직원입니다.`,
+    laneLine,
+    "원칙: ① 사실 위에 행동하고 결과를 간결히 보고합니다. ② 외부에 영향을 주는 작업은 반드시 승인을 요청합니다. ③ 비밀·자격증명·내부 경로는 절대 노출하지 않습니다."
+  ].join(" ");
+}
+
+export function buildAgentPersona({ role = "", lane = "control" } = {}) {
+  return LANE_PERSONA[lane] ?? `${role || "팀 동료"} 역할의 AI 직원입니다.`;
+}
+
 export function createTask(fields) {
   const ts = nowIso();
   return {
@@ -130,9 +158,12 @@ export function createDemoState() {
       name: "Production Leader",
       role: "생산 리더",
       channel: "#production",
+      lane: "production",
       officeIdentityRef: "bot_production",
       capabilityGrants: ["files.read", "mes.production.read"],
       capabilities: ["생산일보 요약", "납기 위험 탐지", "비가동 원인 정리"],
+      persona: buildAgentPersona({ role: "생산 리더", lane: "production" }),
+      prompt: buildAgentPrompt({ role: "생산 리더", lane: "production" }),
       kpi: "납기 위험 알림 시간 70% 단축"
     }),
     createAgentInstance({
@@ -142,9 +173,12 @@ export function createDemoState() {
       name: "Sales Leader",
       role: "영업 리더",
       channel: "#sales",
+      lane: "sales",
       officeIdentityRef: "bot_sales",
       capabilityGrants: ["files.read", "email.draft", "external.customer.send"],
       capabilities: ["견적 후속 조치", "고객 응답 초안", "수주 가능성 요약"],
+      persona: buildAgentPersona({ role: "영업 리더", lane: "sales" }),
+      prompt: buildAgentPrompt({ role: "영업 리더", lane: "sales" }),
       kpi: "견적 응답 리드타임 50% 단축"
     }),
     createAgentInstance({
@@ -154,9 +188,12 @@ export function createDemoState() {
       name: "Scope 3 Leader",
       role: "공급망 탄소 대응 리더",
       channel: "#scope3",
+      lane: "scope3",
       officeIdentityRef: "bot_scope3",
       capabilityGrants: ["files.read", "email.draft", "scope3.report.generate", "external.customer.send"],
       capabilities: ["협력사 데이터 누락 탐지", "탄소 자료 요청 초안", "고객 ESG 대응"],
+      persona: buildAgentPersona({ role: "공급망 탄소 대응 리더", lane: "scope3" }),
+      prompt: buildAgentPrompt({ role: "공급망 탄소 대응 리더", lane: "scope3" }),
       kpi: "탄소 데이터 누락률 80% 감소"
     }),
     createAgentInstance({
@@ -166,9 +203,12 @@ export function createDemoState() {
       name: "Ops Controller",
       role: "승인·감사 관리자",
       channel: "#approvals",
+      lane: "control",
       officeIdentityRef: "bot_ops",
       capabilityGrants: ["approval.manage", "audit.read"],
       capabilities: ["권한 정책", "승인 큐", "감사 로그"],
+      persona: buildAgentPersona({ role: "승인·감사 관리자", lane: "control" }),
+      prompt: buildAgentPrompt({ role: "승인·감사 관리자", lane: "control" }),
       kpi: "외부 발송 100% 승인 추적"
     })
   ];

@@ -77,6 +77,15 @@ export function AgentPanel({
         ) : null}
       </div>
 
+
+      {(agent.persona || agent.prompt) && (
+        <div className="bx-panel" style={{ marginTop: 12, padding: 11, borderRadius: 12, background: "rgba(255,255,255,0.025)" }}>
+          <div style={{ fontSize: 10.5, color: "var(--bx-accent)", fontWeight: 800, letterSpacing: "0.08em", marginBottom: 6 }}>ROLE PROMPT</div>
+          {agent.persona && <div style={{ fontSize: 11.2, color: "var(--bx-text)", lineHeight: 1.45, marginBottom: 6 }}>{agent.persona}</div>}
+          {agent.prompt && <div style={{ fontSize: 10.5, color: "var(--bx-muted)", lineHeight: 1.45, maxHeight: 86, overflowY: "auto" }}>{agent.prompt}</div>}
+        </div>
+      )}
+
       {agent.capabilities.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 12 }}>
           {agent.capabilities.slice(0, 6).map((c) => (

@@ -6,9 +6,13 @@ import {
   ApprovalStatus,
   TaskStatus,
   AgentStatus,
+  OFFICE_LANES,
   createTaskRun,
   createApprovalRequest,
   createAuditEvent,
+  createAgentInstance,
+  buildAgentPersona,
+  buildAgentPrompt,
   nowIso
 } from "../../domain/src/index.mjs";
 import {
@@ -173,6 +177,44 @@ function handleApprovalDecide(state, command) {
   return { ok: true, decision: command.decision, events: c.events, result: { approval, task } };
 }
 
+// Create a new agent ("hire a colleague") from the office. Public-safe by
+// construction: only descriptive identity fields are accepted — persona/prompt
+// describe intent and behaviour, never secrets, private paths, vendor or model
+// names. New office-created agents receive NO capability grants, so policy still
+// blocks any sensitive tool use until an operator grants it explicitly.
+function handleAgentCreate(state, command) {
+  const c = createCollector(state);
+  const lane = OFFICE_LANES.includes(command.lane) ? command.lane : "control";
+  const role = String(command.role ?? "").trim();
+  const name = String(command.name ?? "").trim();
+  const channelByLane = { production: "#production", sales: "#sales", scope3: "#scope3", control: "#approvals" };
+
+  const agent = createAgentInstance({
+    workspaceId: state.workspace?.id ?? "ws_default",
+    definitionId: `def_custom_${lane}`,
+    name,
+    role,
+    lane,
+    channel: command.channel || channelByLane[lane],
+    origin: "office.create",
+    capabilityGrants: [], // safe default: no sensitive grants until explicitly granted
+    capabilities: Array.isArray(command.capabilities)
+      ? command.capabilities.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
+      : [],
+    persona: String(command.persona ?? "").trim() || buildAgentPersona({ role, lane }),
+    prompt: String(command.prompt ?? "").trim() || buildAgentPrompt({ role, lane }),
+    kpi: String(command.kpi ?? "").trim()
+  });
+  state.agents = state.agents ?? [];
+  state.agents.push(agent);
+
+  c.emit(EventType.agentCreated,
+    { agentId: agent.id, name: agent.name, role: agent.role, lane: agent.lane, requestedBy: command.requestedBy },
+    { actorType: "human", actor: command.requestedBy ?? "operator", target: agent.id, message: `${agent.name || agent.role} 직원 합류 (${lane})` });
+
+  return { ok: true, decision: "created", events: c.events, result: { agent } };
+}
+
 // --- public dispatch --------------------------------------------------------
 
 // Mutates `state`, returns { ok, events, result }. Projects events to the
@@ -191,6 +233,9 @@ export function dispatch(state, command, options = {}) {
       break;
     case CommandType.approvalDecide:
       outcome = handleApprovalDecide(state, command);
+      break;
+    case CommandType.agentCreate:
+      outcome = handleAgentCreate(state, command);
       break;
     default:
       throw new Error(`Unsupported command type: ${command.type}`);
@@ -268,6 +313,7 @@ const LIVE_EVENT_META = Object.freeze({
   "tool.call.completed": { level: "success", label: "툴 호출 완료" },
   "approval.requested": { level: "pending", label: "승인 요청" },
   "approval.decided": { level: "info", label: "승인 결정" },
+  "agent.created": { level: "success", label: "직원 합류" },
   "office.message.posted": { level: "info", label: "오피스 게시" }
 });
 
@@ -407,6 +453,9 @@ function laneForCategory(category) {
   return WORKSTREAM_LANES.find((l) => l.id === category) ?? WORKSTREAM_LANES[3];
 }
 function laneForAgent(agent, tasks) {
+  // An explicit lane (seeded staff or office-created agents) always wins so the
+  // 3D office places the avatar in the department the operator chose.
+  if (agent.lane && WORKSTREAM_LANES.some((l) => l.id === agent.lane)) return laneForCategory(agent.lane);
   const owned = tasks.find((t) => (t.assignedAgentId ?? t.ownerAgentId) === agent.id);
   if (owned?.category) return laneForCategory(owned.category);
   return WORKSTREAM_LANES.find((l) => l.roleHint.test(`${agent.role ?? ""} ${agent.name ?? ""}`)) ?? WORKSTREAM_LANES[3];
@@ -520,6 +569,9 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
       focus: status === "running" ? "집중 실행" : status === "blocked" ? "정책 차단" : status === "disabled" ? "비활성" : "대기·준비",
       activeMission: active?.title ?? null,
       capabilities: a.capabilities ?? [],
+      persona: a.persona ?? "",
+      prompt: a.prompt ?? "",
+      origin: a.origin ?? "seed",
       kpi: a.kpi ?? ""
     };
   });

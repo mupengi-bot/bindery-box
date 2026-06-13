@@ -5,6 +5,7 @@ import type { Connector, GoldenImage, KnowledgeResult, LiveLog, Workstream } fro
 
 const WS = "default";
 const POLL_MS = 6000;
+export type CreateAgentInput = { name: string; role: string; lane: string; persona?: string; prompt?: string; capabilities?: string[]; kpi?: string };
 
 async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
@@ -25,6 +26,8 @@ export interface OfficeData {
   runMission: (taskId: string) => Promise<void>;
   /** Decide an approval, then refresh. */
   decideApproval: (approvalId: string, decision: "approved" | "rejected") => Promise<void>;
+  /** Create a demo office agent/person, then refresh. */
+  createAgent: (input: CreateAgentInput) => Promise<void>;
   /** Reseed the demo company. */
   reseed: () => Promise<void>;
   /** One-off knowledge graph search. */
@@ -96,6 +99,19 @@ export function useOfficeData(): OfficeData {
     [refresh],
   );
 
+
+  const createAgent = useCallback(
+    async (input: CreateAgentInput) => {
+      await fetch(`/api/workspaces/${WS}/agents`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...input, requestedBy: "operator" }),
+      });
+      await refresh();
+    },
+    [refresh],
+  );
+
   const reseed = useCallback(async () => {
     await fetch(`/api/demo/seed`, { method: "POST" });
     await refresh();
@@ -118,6 +134,7 @@ export function useOfficeData(): OfficeData {
     refresh,
     runMission,
     decideApproval,
+    createAgent,
     reseed,
     searchKnowledge,
   };
