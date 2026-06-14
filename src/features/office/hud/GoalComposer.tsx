@@ -8,10 +8,10 @@ import { PlanPreviewPanel } from "./PlanPreviewPanel";
 
 function inferLaneFromIntent(text: string): LaneId | null {
   const q = text.toLowerCase();
-  if (/생산|라인|납기|설비|mes|production/.test(q)) return "production";
-  if (/영업|견적|고객|수주|sales|crm/.test(q)) return "sales";
-  if (/scope\s*3|scope3|탄소|배출|협력사|esg/.test(q)) return "scope3";
-  if (/승인|감사|권한|정책|관제|approval|audit|policy/.test(q)) return "control";
+  if (/github|git|pr|pull request|issue|commit|branch|ci|test|bug|code|repo|리포|코드|버그|테스트|이슈/.test(q)) return "engineering";
+  if (/contract|legal|clause|compliance|policy|계약|법무|조항|컴플라이언스|정책|서명/.test(q)) return "legal";
+  if (/mattermost|incident|runbook|ops|operation|customer|support|장애|인시던트|런북|운영|고객|지원|채널|스레드/.test(q)) return "operations";
+  if (/승인|감사|권한|관제|approval|audit|governance/.test(q)) return "control";
   return null;
 }
 
@@ -87,7 +87,7 @@ export function GoalComposer({
         title,
         lane: executionLane,
         priority: advanced ? "high" : "normal",
-        requiresApproval: planPreview ? planPreview.approvals.some((a) => a.required) : executionLane === "sales" || executionLane === "scope3",
+        requiresApproval: planPreview ? planPreview.approvals.some((a) => a.required) : executionLane === "engineering" || executionLane === "legal",
         expectedOutput: planPreview?.expectedArtifacts.join(" · ") || `${LANE_ZONES[executionLane].label} 업무 결과 초안`,
         enqueue: true,
       });
@@ -109,7 +109,7 @@ export function GoalComposer({
         title,
         lane: activeLane,
         priority: advanced ? "high" : "normal",
-        requiresApproval: activeLane === "sales" || activeLane === "scope3",
+        requiresApproval: activeLane === "engineering" || activeLane === "legal",
         expectedOutput: `${LANE_ZONES[activeLane].label} 업무 결과 초안`,
         enqueue: true,
       });
@@ -159,7 +159,7 @@ export function GoalComposer({
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
-        <input value={intent} onChange={(e) => { setIntent(e.target.value); setPlanPreview(null); }} onKeyDown={(e) => e.key === "Enter" && runFirst()} placeholder="예: 생산 2라인 납기 위험 점검하고 조치안 만들어줘" style={{ flex: 1, background: "rgba(8,12,24,0.7)", border: "1px solid var(--bx-border)", borderRadius: 10, padding: "11px 14px", color: "var(--bx-text)", fontSize: 13, outline: "none" }} />
+        <input value={intent} onChange={(e) => { setIntent(e.target.value); setPlanPreview(null); }} onKeyDown={(e) => e.key === "Enter" && runFirst()} placeholder="예: GitHub PR 상태 triage하고 Mattermost 스레드에 계획 남겨줘" style={{ flex: 1, background: "rgba(8,12,24,0.7)", border: "1px solid var(--bx-border)", borderRadius: 10, padding: "11px 14px", color: "var(--bx-text)", fontSize: 13, outline: "none" }} />
         <button onClick={runFirst} disabled={effectiveBusy || (!intent.trim() && matches.length === 0 && runnable.length === 0)} style={{ ...primaryBtn, opacity: effectiveBusy || (!intent.trim() && matches.length === 0 && runnable.length === 0) ? 0.5 : 1 }}>
           {effectiveBusy ? "처리 중…" : planPreview ? "계획대로 실행 ▸" : intent.trim() ? "계획 보기 ▸" : "디스패치 ▸"}
         </button>
@@ -220,8 +220,8 @@ export function GoalComposer({
       </div>
 
       <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 10.5, color: "var(--bx-muted)" }}>구역 요청은 task.create → agent.run.queued 이벤트로 기록됩니다.</span>
-        <button onClick={onReseed} style={ghostBtn}>↻ 데모 회사 재구성</button>
+        <span style={{ fontSize: 10.5, color: "var(--bx-muted)" }}>업무 요청은 task.create → Paperclip boundary → Mattermost thread 이벤트로 기록됩니다.</span>
+        <button onClick={onReseed} style={ghostBtn}>↻ 워크스페이스 재구성</button>
       </div>
     </div>
   );

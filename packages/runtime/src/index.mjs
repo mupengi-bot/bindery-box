@@ -42,16 +42,17 @@ export function deriveMetrics(state) {
     pendingApprovals: state.approvals.filter((a) => a.status === ApprovalStatus.pending).length,
     completedTasks: state.tasks.filter((t) => t.status === TaskStatus.completed).length,
     officeEvents: state.officeEvents?.length ?? 0,
-    manufacturingKpis: state.metrics?.manufacturingKpis ?? []
+    workflowKpis: state.metrics?.workflowKpis ?? []
   };
 }
 
 // --- internal helpers -------------------------------------------------------
 
 function taskResult(task) {
-  if (task.category === "production") return "생산 2라인 지연 가능성 높음. 원인: 원자재 입고 지연·설비 점검 대기. 권장 조치: 구매팀 확인, 야간조 증원 검토.";
-  if (task.category === "sales") return "고객 A/B/C에 대한 후속 메시지 초안 작성 완료. 외부 발송 전 관리자 승인이 필요함.";
-  if (task.category === "scope3") return "공급사 4곳의 배출계수·전력사용량 데이터가 누락됨. 자료 요청 메일 초안 생성 완료.";
+  if (task.category === "engineering") return "GitHub 이슈/PR 상태를 triage했습니다. 권장 조치: 실패한 체크 우선 확인, 변경 범위 요약, PR 생성·병합 전 사람 승인 유지.";
+  if (task.category === "legal") return "계약·정책 문서를 검토했습니다. 위험 조항 후보, 수정 제안, 외부 발송 전 승인 메모를 생성했습니다.";
+  if (task.category === "operations") return "Mattermost 운영 요청을 정리했습니다. 인시던트 요약, 영향 범위, 런북 기준 다음 조치를 제안했습니다.";
+  if (task.category === "control") return "승인 큐와 감사 로그를 점검했습니다. 정책 변경 또는 외부 영향 작업 전 사람 승인 경계를 유지합니다.";
   return "업무 실행 결과 초안 생성 완료.";
 }
 
@@ -196,7 +197,7 @@ function handleAgentCreate(state, command) {
     : (template && OFFICE_LANES.includes(template.lane) ? template.lane : "control");
   const role = String(command.role ?? template?.role ?? "").trim();
   const name = String(command.name ?? "").trim();
-  const channelByLane = { production: "#production", sales: "#sales", scope3: "#scope3", control: "#approvals" };
+  const channelByLane = { engineering: "#engineering", legal: "#legal", operations: "#operations", control: "#approvals" };
   const capabilities = Array.isArray(command.capabilities)
     ? command.capabilities
     : (template?.capabilities ?? []);
@@ -237,51 +238,51 @@ function routeAgentForLane(state, lane) {
 }
 
 const PLAN_BY_LANE = Object.freeze({
-  production: {
-    data: ["생산일보", "라인별 생산 실적", "공급사 납기 상태", "주문 백로그"],
-    capabilities: ["files.read", "mes.production.read"],
-    artifacts: ["납기 위험 원인 3개", "우선순위 조치안", "생산 리스크 보고서"],
+  engineering: {
+    data: ["GitHub 이슈", "PR diff", "CI 상태", "리포지토리 컨텍스트"],
+    capabilities: ["github.repo.read", "github.pr.review", "paperclip.ticket.create"],
+    artifacts: ["이슈/PR triage 표", "변경 영향 요약", "실행·테스트 계획"],
     steps: [
-      ["production-read", "생산일보와 라인 상태 조회", "low"],
-      ["risk-detect", "납기 위험 원인 후보 추출", "medium"],
-      ["action-plan", "조치 우선순위와 담당 부서 제안", "medium"],
-      ["report", "운영자용 보고서 초안 작성", "low"]
-    ],
-    estimate: 2,
-    confidence: 82,
-    approval: { required: false, reason: "읽기 전용 분석으로 외부 영향 작업 없음", boundary: "외부 발송 또는 ERP 쓰기 작업 전 승인" }
-  },
-  sales: {
-    data: ["견적 목록", "최근 고객 응답", "CRM 상태", "미팅 메모"],
-    capabilities: ["files.read", "email.draft", "external.customer.send"],
-    artifacts: ["고객별 후속 메시지 초안", "수주 가능성 요약", "승인 메모"],
-    steps: [
-      ["quote-review", "미응답 견적과 고객 우선순위 확인", "low"],
-      ["draft", "고객별 후속 메시지 초안 작성", "medium"],
-      ["human-gate", "외부 발송 전 승인 요청", "high"],
-      ["thread", "승인 후 메신저/메일 발송 준비", "high"]
+      ["github-read", "GitHub 이슈·PR·CI 상태 조회", "low"],
+      ["impact-map", "변경 범위와 실패 원인 후보 정리", "medium"],
+      ["paperclip-ticket", "Paperclip 실행 티켓/위임 경계 생성", "medium"],
+      ["approval-boundary", "브랜치 push/PR 생성 전 승인 경계 확인", "high"]
     ],
     estimate: 3,
-    confidence: 74,
-    approval: { required: true, reason: "외부 고객 커뮤니케이션이 포함됨", boundary: "고객에게 메시지 발송 전" }
+    confidence: 81,
+    approval: { required: true, reason: "코드 변경·PR 생성은 저장소에 외부 영향을 줄 수 있음", boundary: "브랜치 push, PR 생성, 이슈 댓글 게시 전" }
   },
-  scope3: {
-    data: ["협력사 목록", "배출계수", "전력 사용량", "이전 자료 요청 내역"],
-    capabilities: ["files.read", "scope3.report.generate", "external.customer.send"],
-    artifacts: ["누락 공급사 목록", "자료 요청 초안", "Scope 3 리스크 메모"],
+  legal: {
+    data: ["업로드 문서", "계약/정책 체크리스트", "Mattermost 원문 스레드", "승인 규칙"],
+    capabilities: ["files.read", "policy.review", "mattermost.thread.post"],
+    artifacts: ["위험 조항 표", "수정 제안", "승인 요청 메모"],
     steps: [
-      ["supplier-scan", "협력사별 누락 필드 스캔", "low"],
-      ["gap-rank", "누락 리스크와 우선순위 산정", "medium"],
-      ["request-draft", "자료 요청 초안 작성", "medium"],
-      ["human-gate", "외부 요청 전 승인", "high"]
+      ["document-read", "문서와 요청 스레드 읽기", "low"],
+      ["risk-detect", "위험 조항과 모호한 책임 경계 추출", "medium"],
+      ["revision-draft", "수정 제안과 근거 작성", "medium"],
+      ["human-gate", "외부 전달 전 승인 요청", "high"]
     ],
     estimate: 4,
-    confidence: 78,
-    approval: { required: true, reason: "협력사 외부 자료 요청 가능성이 있음", boundary: "협력사에 자료 요청 발송 전" }
+    confidence: 77,
+    approval: { required: true, reason: "법무/계약 산출물은 외부 전달 전 사람 검토가 필요함", boundary: "외부 발송·서명·고객 공유 전" }
+  },
+  operations: {
+    data: ["Mattermost 채널/스레드", "운영 런북", "서비스 상태", "최근 감사 로그"],
+    capabilities: ["mattermost.thread.read", "runbook.read", "mattermost.thread.post"],
+    artifacts: ["인시던트 요약", "영향 범위", "다음 액션 체크리스트"],
+    steps: [
+      ["thread-ingest", "Mattermost 요청과 관련 스레드 수집", "low"],
+      ["runbook-match", "런북과 서비스 상태를 대조", "medium"],
+      ["next-actions", "담당자·우선순위·다음 액션 정리", "medium"],
+      ["thread-reply", "스레드 답변 초안 작성", "medium"]
+    ],
+    estimate: 3,
+    confidence: 80,
+    approval: { required: false, reason: "초기 운영 triage는 읽기·초안 중심", boundary: "고객/외부 시스템 변경 또는 공지 발송 전" }
   },
   control: {
     data: ["승인 큐", "감사 로그", "정책 상태", "커넥터 권한"],
-    capabilities: ["approval.manage", "audit.read"],
+    capabilities: ["approval.manage", "audit.read", "policy.review"],
     artifacts: ["승인 병목 요약", "정책 점검표", "감사 메모"],
     steps: [
       ["queue-read", "승인 큐와 감사 로그 조회", "low"],
@@ -294,8 +295,17 @@ const PLAN_BY_LANE = Object.freeze({
   }
 });
 
+function inferLaneFromText(text, fallback = "control") {
+  const t = String(text ?? "").toLowerCase();
+  if (/(github|git|pr|pull request|issue|commit|branch|ci|test|bug|code|repo|리포|코드|버그|테스트|이슈)/i.test(t)) return "engineering";
+  if (/(contract|legal|clause|compliance|policy|계약|법무|조항|컴플라이언스|정책|서명)/i.test(t)) return "legal";
+  if (/(mattermost|incident|runbook|ops|operation|customer|support|장애|인시던트|런북|운영|고객|지원|채널|스레드)/i.test(t)) return "operations";
+  if (/(approval|audit|governance|permission|승인|감사|권한|거버넌스|관제)/i.test(t)) return "control";
+  return OFFICE_LANES.includes(fallback) ? fallback : "control";
+}
+
 export function buildPlanPreview(state, command) {
-  const lane = OFFICE_LANES.includes(command.lane) ? command.lane : "control";
+  const lane = inferLaneFromText(command.title, command.lane);
   const spec = PLAN_BY_LANE[lane] ?? PLAN_BY_LANE.control;
   const agent = routeAgentForLane(state, lane);
   const title = String(command.title ?? "").trim() || "새 업무 목표";
@@ -374,6 +384,162 @@ function handleTaskCreate(state, command) {
   return { ok: true, decision: "created", events: c.events, result: { task, agent } };
 }
 
+function ensureCollections(state) {
+  state.threads = state.threads ?? [];
+  state.artifacts = state.artifacts ?? [];
+  state.orchestratorRuns = state.orchestratorRuns ?? [];
+}
+
+function handleUserMessageIngest(state, command) {
+  const c = createCollector(state);
+  ensureCollections(state);
+  const workspaceId = command.workspaceId === "default" ? (state.workspace?.id ?? "ws_default") : command.workspaceId;
+  const text = String(command.text ?? "").trim();
+  const lane = inferLaneFromText(text, command.lane);
+  const agent = routeAgentForLane(state, lane);
+  const channelRef = String(command.channelRef ?? "#inbox").trim() || "#inbox";
+  const threadRef = String(command.threadRef ?? `${channelRef}:${command.providerEventId}`).trim();
+  const title = text.length > 80 ? `${text.slice(0, 77)}...` : text || "채팅에서 들어온 업무 요청";
+
+  const thread = {
+    id: makeId("thread"), workspaceId, provider: command.provider, channelRef, threadRef,
+    senderRef: command.senderRef, providerEventId: command.providerEventId, linkedWorkItemId: null,
+    createdAt: nowIso(), lastMessage: text
+  };
+  state.threads.unshift(thread);
+
+  const task = createTask({
+    workspaceId, title, category: lane, lane, priority: "normal", requiresApproval: lane === "engineering" || lane === "legal",
+    requiredCapabilities: PLAN_BY_LANE[lane]?.capabilities ?? [], assignedAgentId: agent?.id, ownerAgentId: agent?.id,
+    origin: "chat.message", source: `${command.provider}:${channelRef}`, sourceThreadId: thread.id,
+    expectedOutput: `${channelRef} 스레드에 반환할 실행 계획과 산출물`
+  });
+  state.tasks = state.tasks ?? [];
+  state.tasks.push(task);
+  thread.linkedWorkItemId = task.id;
+
+  const orchestratorRun = {
+    id: makeId("orch"), workspaceId, taskId: task.id, provider: "paperclip-boundary", status: "planned",
+    externalRef: null, createdAt: nowIso(),
+    note: "Mock boundary only: real Paperclip/OpenClaw Gateway credentials are not required for this public-safe loop."
+  };
+  state.orchestratorRuns.unshift(orchestratorRun);
+
+  c.emit(EventType.userMessageReceived,
+    { workspaceId, provider: command.provider, channelRef, threadRef, senderRef: command.senderRef, text, taskId: task.id, lane },
+    { actorType: "human", actor: command.senderRef, target: threadRef, message: `${command.provider} 메시지 인입 → ${lane} 업무 생성` });
+  c.emit(EventType.taskCreated,
+    { taskId: task.id, title: task.title, lane, agentId: agent?.id, requestedBy: command.senderRef, source: command.provider },
+    { actorType: "system", actor: "control-plane", target: task.id, message: `채팅 업무 생성: ${title}${agent ? ` → ${agent.name}` : ""}` });
+  c.emit(EventType.agentRunQueued,
+    { taskId: task.id, agentId: agent?.id, goal: title, requestedBy: command.senderRef, orchestratorRunId: orchestratorRun.id },
+    { actorType: "system", actor: "paperclip-boundary", target: orchestratorRun.id, message: `Paperclip 실행 경계 준비: ${title}` });
+
+  return { ok: true, decision: "ingested", events: c.events, result: { thread, task, agent, orchestratorRun } };
+}
+
+function handleOfficeMessagePost(state, command) {
+  const c = createCollector(state);
+  ensureCollections(state);
+  const workspaceId = command.workspaceId === "default" ? (state.workspace?.id ?? "ws_default") : command.workspaceId;
+  const channelRef = String(command.channelRef ?? "#tasks").trim() || "#tasks";
+  const text = String(command.text ?? "").trim();
+  const thread = state.threads.find((t) => t.id === command.threadId || t.threadRef === command.threadId || t.threadRef === command.correlationId);
+  if (thread) {
+    thread.replies = thread.replies ?? [];
+    thread.replies.push({ id: makeId("reply"), actor: command.actor ?? "bindery-bot", text, createdAt: nowIso() });
+    thread.lastReply = text;
+    thread.updatedAt = nowIso();
+  }
+  const post = {
+    id: makeId("office"), provider: command.provider ?? "mattermost-mock", teamRef: "team_platform",
+    channelRef, threadRef: thread?.threadRef ?? command.correlationId ?? null, kind: "thread_reply",
+    text, sourceEventId: null, sourceEventType: EventType.officeMessagePosted, postedAt: nowIso()
+  };
+  state.officeEvents = state.officeEvents ?? [];
+  state.officeEvents.push(post);
+  c.emit(EventType.officeMessagePosted,
+    { workspaceId, channelRef, threadRef: post.threadRef, text, correlationId: command.correlationId },
+    { actorType: "system", actor: post.provider, target: channelRef, message: text });
+  return { ok: true, decision: "posted", events: c.events, result: { post, thread } };
+}
+
+function handleAgentRunEnqueue(state, command, policy) {
+  const c = createCollector(state);
+  ensureCollections(state);
+  const workspaceId = command.workspaceId === "default" ? (state.workspace?.id ?? "ws_default") : command.workspaceId;
+  const task = state.tasks.find((t) => t.id === command.taskId);
+  if (!task) throw new Error(`Task not found: ${command.taskId}`);
+  const agent = state.agents.find((a) => a.id === (command.agentId ?? task.assignedAgentId ?? task.ownerAgentId));
+  if (!agent) throw new Error(`Agent not found for task: ${command.taskId}`);
+
+  const verdict = policy.evaluateTaskRun(task, agent);
+  if (verdict.decision === Decision.block) {
+    task.status = TaskStatus.queued;
+    agent.status = AgentStatus.blocked;
+    c.emit(EventType.toolCallBlocked, { taskId: task.id, agentId: agent.id, reason: verdict.reason },
+      { actorType: "system", actor: "policy", target: task.id, message: `Paperclip 실행 차단: ${verdict.reason}` });
+    return { ok: false, decision: verdict.decision, events: c.events, result: { task, agent, blocked: verdict } };
+  }
+
+  const orchestratorRun = {
+    id: makeId("orch"), workspaceId, taskId: task.id, agentId: agent.id, provider: "paperclip-boundary",
+    status: verdict.decision === Decision.requireApproval ? "waiting_approval" : "running",
+    adapters: ["paperclip", "github", "mattermost"], externalRef: command.externalRef ?? null,
+    createdAt: nowIso(), startedAt: verdict.decision === Decision.requireApproval ? null : nowIso(),
+    goal: command.goal ?? task.title, policyDecision: verdict.decision, approvalId: null
+  };
+  state.orchestratorRuns.unshift(orchestratorRun);
+  task.lastOrchestratorRunId = orchestratorRun.id;
+  c.emit(EventType.agentRunQueued,
+    { workspaceId, taskId: task.id, agentId: agent.id, goal: orchestratorRun.goal, orchestratorRunId: orchestratorRun.id, requestedBy: command.requestedBy },
+    { actorType: "system", actor: "paperclip-boundary", target: orchestratorRun.id, message: `Paperclip 경계 실행 큐 등록: ${task.title}` });
+
+  if (verdict.decision === Decision.requireApproval) {
+    const approval = createApprovalRequest({
+      taskId: task.id, taskRunId: orchestratorRun.id, workspaceId, title: `${task.title} 실행 승인 요청`,
+      requestedByAgentId: agent.id, reason: verdict.reason, summary: "Paperclip/GitHub/Mattermost 경계 실행 전 사람 승인이 필요합니다."
+    });
+    state.approvals.unshift(approval);
+    task.status = TaskStatus.waitingApproval;
+    orchestratorRun.approvalId = approval.id;
+    c.emit(EventType.approvalRequested,
+      { approvalId: approval.id, workspaceId, taskRunId: orchestratorRun.id, reason: verdict.reason },
+      { actorType: "agent", actor: agent.name, target: approval.id, message: `${task.title} 실행 승인 요청 생성` });
+    return { ok: true, decision: verdict.decision, events: c.events, result: { task, agent, orchestratorRun, approval } };
+  }
+
+  agent.status = AgentStatus.running;
+  task.status = TaskStatus.running;
+  c.emit(EventType.agentRunStarted,
+    { workspaceId, taskId: task.id, agentId: agent.id, orchestratorRunId: orchestratorRun.id, adapter: "paperclip-boundary" },
+    { actorType: "agent", actor: agent.name, target: task.id, message: `Paperclip/OpenClaw 경계 실행 시작: ${task.title}` });
+  c.emit(EventType.agentStreamDelta,
+    { workspaceId, taskId: task.id, agentId: agent.id, orchestratorRunId: orchestratorRun.id, delta: "GitHub/Mattermost context collected; creating operator-facing artifact." });
+
+  const artifact = {
+    id: makeId("artifact"), workspaceId, type: "run-report", title: `${task.title} 실행 보고서`,
+    contentRef: `artifact://${task.id}/paperclip-boundary-report`, sourceRunId: orchestratorRun.id, visibleInOffice: true,
+    createdAt: nowIso(), summary: `${agent.name}가 ${task.title} 업무를 Paperclip/GitHub/Mattermost 경계에서 처리했습니다.`
+  };
+  state.artifacts.unshift(artifact);
+  const resultSummary = `${artifact.summary} 산출물: ${artifact.title}`;
+  task.output = resultSummary;
+  task.artifactRefs = [...(task.artifactRefs ?? []), artifact.id];
+  task.status = TaskStatus.completed;
+  agent.status = AgentStatus.idle;
+  orchestratorRun.status = "completed";
+  orchestratorRun.completedAt = nowIso();
+  orchestratorRun.artifactId = artifact.id;
+  c.emit(EventType.agentRunCompleted,
+    { workspaceId, taskId: task.id, agentId: agent.id, orchestratorRunId: orchestratorRun.id, artifactId: artifact.id, resultSummary },
+    { actorType: "agent", actor: agent.name, target: task.id, message: resultSummary });
+  c.emit(EventType.taskRunCompleted,
+    { taskRunId: orchestratorRun.id, taskId: task.id, resultSummary },
+    { actorType: "agent", actor: agent.name, target: task.id, message: resultSummary });
+  return { ok: true, decision: verdict.decision, events: c.events, result: { task, agent, orchestratorRun, artifact } };
+}
+
 // agent.move.requested lifecycle. Movement is persisted as a real command/event
 // flow (not just UI-local): policy authorises the move, the runtime records the
 // agent's move target on canonical state, and three events
@@ -433,6 +599,15 @@ export function dispatch(state, command, options = {}) {
   switch (command.type) {
     case CommandType.taskPlanPreview:
       outcome = handleTaskPlanPreview(state, command);
+      break;
+    case CommandType.userMessageIngest:
+      outcome = handleUserMessageIngest(state, command);
+      break;
+    case CommandType.agentRunEnqueue:
+      outcome = handleAgentRunEnqueue(state, command, policy);
+      break;
+    case CommandType.officeMessagePost:
+      outcome = handleOfficeMessagePost(state, command);
       break;
     case CommandType.taskRun:
       outcome = handleTaskRun(state, command, policy);
@@ -517,11 +692,16 @@ export function projectOverview(state, workspaceId) {
 // Every entry is { id, ts, source, level, actor, channel, action, message }.
 const LIVE_EVENT_META = Object.freeze({
   "task.plan.previewed": { level: "info", label: "실행 계획 미리보기" },
+  "user.message.received": { level: "info", label: "채팅 인입" },
   "task.created": { level: "info", label: "업무 생성" },
   "agent.move.requested": { level: "info", label: "이동 요청" },
   "agent.move.accepted": { level: "info", label: "이동 수락" },
   "agent.move.projected": { level: "info", label: "이동 반영" },
   "agent.run.queued": { level: "info", label: "실행 큐 추가" },
+  "agent.run.started": { level: "running", label: "에이전트 실행 시작" },
+  "agent.stream.delta": { level: "running", label: "에이전트 스트림" },
+  "agent.run.completed": { level: "success", label: "에이전트 실행 완료" },
+  "agent.run.failed": { level: "error", label: "에이전트 실행 실패" },
   "task.run.started": { level: "running", label: "업무 실행 시작" },
   "task.run.completed": { level: "success", label: "업무 완료" },
   "task.run.failed": { level: "error", label: "업무 실패" },
@@ -662,10 +842,10 @@ export function projectLiveLog(state, workspaceId, { limit = 80 } = {}) {
 // Business lanes the simulator visualises. Agents/missions map onto a lane via
 // task category first, then role keywords as a fallback.
 const WORKSTREAM_LANES = Object.freeze([
-  { id: "production", label: "생산", category: "production", glyph: "▣", roleHint: /생산|produc/i, reward: "납기 리스크 ↓" },
-  { id: "sales", label: "영업", category: "sales", glyph: "◆", roleHint: /영업|sales/i, reward: "수주 가능성 ↑" },
-  { id: "scope3", label: "Scope 3", category: "scope3", glyph: "❖", roleHint: /탄소|scope|esg/i, reward: "데이터 누락 ↓" },
-  { id: "control", label: "관제", category: "control", glyph: "◈", roleHint: /승인|감사|ops|control/i, reward: "감사 추적 100%" }
+  { id: "engineering", label: "Engineering", category: "engineering", glyph: "⌘", roleHint: /개발|engineering|github|code|pr|issue/i, reward: "개발 리드타임 ↓" },
+  { id: "legal", label: "Legal", category: "legal", glyph: "§", roleHint: /계약|법무|legal|compliance|policy/i, reward: "문서 리스크 ↓" },
+  { id: "operations", label: "Operations", category: "operations", glyph: "◆", roleHint: /운영|ops|operation|support|incident|mattermost/i, reward: "응답 시간 ↓" },
+  { id: "control", label: "Control", category: "control", glyph: "◈", roleHint: /승인|감사|governance|control/i, reward: "감사 추적 100%" }
 ]);
 
 function laneForCategory(category) {
@@ -750,8 +930,8 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
     trend: k.delta > 0 ? "up" : k.delta < 0 ? "down" : "flat",
     spark: sparkSeries(k.id, k.target)
   }));
-  // Domain KPIs carried from the seeded edition (manufacturing).
-  const domainKpis = (m.manufacturingKpis ?? []).map((k, i) => ({
+  // Workflow KPIs carried from the seeded workspace template.
+  const domainKpis = (m.workflowKpis ?? []).map((k, i) => ({
     id: `dom_${i}`, label: k.label, value: k.value, delta: k.trend, trend: "flat",
     spark: sparkSeries(`dom_${k.label}`, 6 + i * 2)
   }));
@@ -822,9 +1002,9 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
   const objCount = (cat) => tasks.filter((t) => t.category === cat);
   const objDone = (cat) => objCount(cat).filter((t) => t.status === TaskStatus.completed).length;
   const objectives = [
-    { id: "obj_prod", label: "생산 납기 리스크 미션 처리", done: objDone("production"), total: Math.max(1, objCount("production").length) },
-    { id: "obj_sales", label: "영업 후속 메시지 승인 통과", done: approvals.filter((a) => a.status === ApprovalStatus.approved).length, total: Math.max(1, objCount("sales").length) },
-    { id: "obj_scope3", label: "Scope 3 협력사 데이터 확보", done: objDone("scope3"), total: Math.max(1, objCount("scope3").length) },
+    { id: "obj_eng", label: "GitHub 이슈/PR triage 처리", done: objDone("engineering"), total: Math.max(1, objCount("engineering").length) },
+    { id: "obj_legal", label: "계약·정책 승인 게이트 통과", done: approvals.filter((a) => a.status === ApprovalStatus.approved).length, total: Math.max(1, objCount("legal").length) },
+    { id: "obj_ops", label: "Mattermost 인입 업무 정리", done: objDone("operations"), total: Math.max(1, objCount("operations").length) },
     { id: "obj_zero", label: "인시던트 없이 운영 유지", done: failed === 0 ? 1 : 0, total: 1 }
   ].map((o) => ({ ...o, status: o.done >= o.total ? "done" : o.done > 0 ? "progress" : "open" }));
 
@@ -846,12 +1026,11 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
 
   // --- achievement badges (unlock-style) ---
   const anyApproved = approvals.some((a) => a.status === ApprovalStatus.approved);
-  const scope3Done = tasks.some((t) => t.category === "scope3" && t.status === TaskStatus.completed);
   const achievements = [
     { id: "first_run", icon: "⚡", label: "First Dispatch", desc: "첫 미션 실행", unlocked: taskRuns.length > 0 },
     { id: "approval_cleared", icon: "✓", label: "Cleared Gate", desc: "승인 게이트 통과", unlocked: anyApproved },
     { id: "zero_incident", icon: "❖", label: "Zero Incident", desc: "실패 0건 유지", unlocked: failed === 0 && taskRuns.length > 0 },
-    { id: "scope3_closer", icon: "♻", label: "Scope 3 Closer", desc: "탄소 데이터 미션 완료", unlocked: scope3Done },
+    { id: "thread_ingested", icon: "✉", label: "Thread Ingested", desc: "채팅 요청 업무화", unlocked: (state.threads ?? []).length > 0 },
     { id: "full_auto", icon: "★", label: "Full Automation", desc: "모든 미션 완료", unlocked: completed >= tasks.length && tasks.length > 0 }
   ];
 
@@ -892,12 +1071,12 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
     }
   }
   // System genesis beat from the seed audit row, so a fresh company isn't empty.
-  const seedAudit = (state.auditEvents ?? []).find((e) => e.action === "demo.seed");
+  const seedAudit = (state.auditEvents ?? []).find((e) => e.action === "workspace.seed" || e.action === "demo.seed");
   if (seedAudit) {
     beats.push({
       id: `${seedAudit.id}:beat`, ts: seedAudit.ts ?? seedAudit.createdAt, kind: "system", level: "info",
-      lane: "control", laneLabel: "관제", actor: "Mission Control",
-      title: "회사 운영 시작", detail: "에이전트 조직이 배치되고 미션 보드가 준비되었습니다.", reward: null
+      lane: "control", laneLabel: "Control", actor: "Mission Control",
+      title: "AI Company Office 시작", detail: "범용 팀·채팅·GitHub·Paperclip 경계가 준비되었습니다.", reward: null
     });
   }
   const stream = beats

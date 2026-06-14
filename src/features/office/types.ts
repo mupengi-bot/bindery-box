@@ -4,7 +4,7 @@
 // knowledge endpoints.
 
 export type AgentStatus = "running" | "idle" | "blocked" | "disabled";
-export type LaneId = "production" | "sales" | "scope3" | "control";
+export type LaneId = "engineering" | "legal" | "operations" | "control";
 
 export interface PlanPreview {
   id: string;

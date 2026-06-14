@@ -5,39 +5,31 @@ import { trendColor } from "./ui";
 
 const OBJECTIVES = [
   {
-    id: "production",
-    glyph: "⚙",
-    title: "생산 리스크 점검",
-    detail: "납기·라인 병목·조치안을 한 번에 큐잉합니다.",
-    lane: "production",
+    id: "engineering",
+    glyph: "⌘",
+    title: "GitHub PR/이슈 triage",
+    detail: "이슈, PR, CI 상태를 읽고 다음 액션과 승인 경계를 만듭니다.",
+    lane: "engineering",
   },
   {
-    id: "sales",
-    glyph: "↗",
-    title: "영업 후속 조치",
-    detail: "견적/고객 미응답 건을 찾아 다음 액션을 만듭니다.",
-    lane: "sales",
+    id: "legal",
+    glyph: "§",
+    title: "계약·정책 검토",
+    detail: "문서 위험 조항과 수정 제안, 외부 발송 전 승인 메모를 만듭니다.",
+    lane: "legal",
   },
   {
-    id: "scope3",
-    glyph: "◌",
-    title: "Scope 3 자료 준비",
-    detail: "누락 공급사 데이터와 승인 필요 항목을 정리합니다.",
-    lane: "scope3",
+    id: "operations",
+    glyph: "◆",
+    title: "Mattermost 운영 요청",
+    detail: "채팅 스레드를 업무화하고 런북 기준 다음 조치를 정리합니다.",
+    lane: "operations",
   },
-] as const;
+];
 
-export function FirstRunOverlay({
-  workstream,
-  onSkip,
-  onRun,
-}: {
-  workstream: Workstream | null;
-  onSkip: () => void;
-  onRun: (taskId: string) => void;
-}) {
+export function FirstRunOverlay({ workstream, onSkip, onRun }: { workstream: Workstream | null; onSkip: () => void; onRun: (taskId: string) => void }) {
   const company = workstream?.company;
-  const best = workstream?.agentPerformance[0];
+  const best = workstream?.agentPerformance?.[0];
 
   const chooseObjective = (lane: string) => {
     const mission = workstream?.missions.find((m) => m.lane === lane && m.runnable) ?? workstream?.missions.find((m) => m.runnable);
@@ -135,7 +127,7 @@ export function FirstRunOverlay({
 
             <div style={{ marginTop: "auto", display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={onSkip} style={secondaryButton}>Skip to cockpit</button>
-              <button onClick={() => chooseObjective("production")} style={primaryButton}>Start simulation ▸</button>
+              <button onClick={() => chooseObjective("engineering")} style={primaryButton}>Start real-work loop ▸</button>
             </div>
           </div>
         </div>

@@ -26,7 +26,7 @@ function projectEvent(event) {
 }
 
 export function createMockOfficeAdapter(options = {}) {
-  const teamRef = options.teamRef ?? "team_manufacturing";
+  const teamRef = options.teamRef ?? "team_platform";
   const posts = [];
 
   function handleEvent(event) {

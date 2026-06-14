@@ -29,33 +29,33 @@ export interface LaneZone {
 }
 
 export const LANE_ZONES: Record<LaneId, LaneZone> = {
-  production: {
-    id: "production",
-    label: "생산 · Production",
-    glyph: "▣",
+  engineering: {
+    id: "engineering",
+    label: "Engineering · GitHub",
+    glyph: "⌘",
     color: "#3b5bdb",
     center: [-9, -7],
     half: [8, 5.5],
   },
-  sales: {
-    id: "sales",
-    label: "영업 · Sales",
-    glyph: "◆",
+  legal: {
+    id: "legal",
+    label: "Legal · Contracts",
+    glyph: "§",
     color: "#7048e8",
     center: [9, -7],
     half: [8, 5.5],
   },
-  scope3: {
-    id: "scope3",
-    label: "Scope 3 · ESG",
-    glyph: "❖",
+  operations: {
+    id: "operations",
+    label: "Operations · Mattermost",
+    glyph: "◆",
     color: "#0ca678",
     center: [-9, 7],
     half: [8, 5.5],
   },
   control: {
     id: "control",
-    label: "관제 · Control",
+    label: "Control · Governance",
     glyph: "◈",
     color: "#e8590c",
     center: [9, 7],
@@ -63,7 +63,7 @@ export const LANE_ZONES: Record<LaneId, LaneZone> = {
   },
 };
 
-export const LANE_ORDER: LaneId[] = ["production", "sales", "scope3", "control"];
+export const LANE_ORDER: LaneId[] = ["engineering", "legal", "operations", "control"];
 
 // Central plaza where "running" agents rally for a standup.
 export const PLAZA: [number, number] = [0, 0];

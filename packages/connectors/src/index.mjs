@@ -37,18 +37,27 @@ export const CONNECTOR_MANIFESTS = Object.freeze([
     name: "GitHub",
     version: "0.1.0",
     category: "devtools",
-    capabilities: ["github.repo.read", "github.issue.create"],
+    capabilities: ["github.repo.read", "github.issue.create", "github.pr.review", "github.pr.create"],
     configSchema: { org: { type: "string", required: true }, repo: { type: "string", required: false } },
     secretRequirements: ["githubTokenRef"]
   },
   {
-    id: "erp-mes",
-    name: "ERP / MES",
+    id: "mattermost",
+    name: "Mattermost",
     version: "0.1.0",
-    category: "manufacturing",
-    capabilities: ["erp.order.read", "erp.order.write", "mes.production.read"],
-    configSchema: { baseUrl: { type: "string", required: true }, plantId: { type: "string", required: false } },
-    secretRequirements: ["erpApiKeyRef"]
+    category: "communication",
+    capabilities: ["mattermost.thread.read", "mattermost.thread.post", "mattermost.slash-command.receive"],
+    configSchema: { baseUrl: { type: "string", required: true }, team: { type: "string", required: true } },
+    secretRequirements: ["mattermostBotTokenRef", "mattermostSigningSecretRef"]
+  },
+  {
+    id: "paperclip",
+    name: "Paperclip / OpenClaw Gateway",
+    version: "0.1.0",
+    category: "orchestration",
+    capabilities: ["paperclip.ticket.create", "paperclip.run.start", "openclaw.gateway.stream"],
+    configSchema: { gatewayUrl: { type: "string", required: true }, workspaceRef: { type: "string", required: true } },
+    secretRequirements: ["paperclipApiKeyRef", "openclawGatewayTokenRef"]
   },
   {
     id: "webhook",

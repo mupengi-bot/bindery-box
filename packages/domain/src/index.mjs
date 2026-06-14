@@ -34,10 +34,12 @@ export const ToolCallStatus = Object.freeze({
 
 // Capabilities considered sensitive enough to require human approval by policy.
 export const SENSITIVE_CAPABILITIES = Object.freeze([
-  "external.customer.send",
+  "external.message.send",
   "email.send",
   "github.issue.create",
-  "erp.order.write"
+  "github.pr.create",
+  "mattermost.thread.post",
+  "paperclip.run.start"
 ]);
 
 export function nowIso() {
@@ -76,17 +78,17 @@ export function createAgentInstance(fields) {
 
 // Department lanes an agent can belong to in the 3D office. Mirrors the
 // front-end LaneId union and the workstream projection's WORKSTREAM_LANES.
-export const OFFICE_LANES = Object.freeze(["production", "sales", "scope3", "control"]);
+export const OFFICE_LANES = Object.freeze(["engineering", "legal", "operations", "control"]);
 
 // Public-safe persona/prompt scaffolding for a role. Used to seed demo staff and
 // as the default template when an operator creates a new agent from the office.
 // NEVER embed secrets, private paths, vendor or model names here: a persona is a
 // description of *intent and behaviour*, not of any underlying provider.
 const LANE_PERSONA = Object.freeze({
-  production: "생산 운영 라인을 책임지는 동료입니다. 생산일보와 설비 가동 신호를 읽고 납기 위험을 먼저 알립니다.",
-  sales: "영업 라인을 책임지는 동료입니다. 고객 응답과 후속 조치를 준비하고, 외부 발송은 사람의 승인을 받습니다.",
-  scope3: "공급망 탄소(Scope 3) 대응을 책임지는 동료입니다. 누락 데이터를 찾아내고 협력사 자료 요청을 준비합니다.",
-  control: "관제·승인 라인을 책임지는 동료입니다. 권한 정책과 승인 큐, 감사 추적을 관리합니다."
+  engineering: "개발·시스템 업무를 책임지는 동료입니다. GitHub 이슈/PR/테스트/배포 신호를 읽고 안전한 변경 계획을 세웁니다.",
+  legal: "계약·정책·컴플라이언스 업무를 책임지는 동료입니다. 문서 리스크를 검토하고 외부 전달 전 승인을 요청합니다.",
+  operations: "운영·고객지원·인시던트 업무를 책임지는 동료입니다. 채팅/런북/상태 신호를 읽고 다음 조치를 정리합니다.",
+  control: "관제·승인·감사 라인을 책임지는 동료입니다. 권한 정책, 승인 큐, 실행 추적을 관리합니다."
 });
 
 export function buildAgentPrompt({ role = "", lane = "control" } = {}) {
@@ -112,14 +114,14 @@ export function buildAgentPersona({ role = "", lane = "control" } = {}) {
 // operator grants them in a later governance flow). Never embed secrets,
 // private paths, credentials, vendor or model names in a template.
 const ROLE_TEMPLATE_DEFS = Object.freeze([
-  { id: "tpl_production_ops", lane: "production", label: "생산 운영 담당", role: "생산 운영 담당",
-    capabilities: ["생산일보 요약", "납기 위험 탐지", "비가동 원인 정리"], kpi: "납기 위험 알림 시간 단축" },
-  { id: "tpl_sales_followup", lane: "sales", label: "영업 후속 담당", role: "영업 후속 담당",
-    capabilities: ["견적 후속 조치", "고객 응답 초안", "수주 가능성 요약"], kpi: "견적 응답 리드타임 단축" },
-  { id: "tpl_scope3_data", lane: "scope3", label: "Scope 3 데이터 담당", role: "공급망 탄소 데이터 담당",
-    capabilities: ["협력사 데이터 누락 탐지", "탄소 자료 요청 초안", "ESG 리포트 정리"], kpi: "탄소 데이터 누락률 감소" },
-  { id: "tpl_control_ops", lane: "control", label: "관제·승인 담당", role: "승인·감사 담당",
-    capabilities: ["권한 정책 점검", "승인 큐 관리", "감사 로그 정리"], kpi: "외부 발송 승인 추적 유지" }
+  { id: "tpl_engineering_triage", lane: "engineering", label: "GitHub PR/이슈 담당", role: "Engineering Operator",
+    capabilities: ["GitHub 이슈 triage", "PR 리뷰 계획", "테스트 결과 요약"], kpi: "개발 업무 리드타임 단축" },
+  { id: "tpl_legal_reviewer", lane: "legal", label: "계약·정책 검토 담당", role: "Legal Reviewer",
+    capabilities: ["계약서 위험 조항 검토", "정책 체크리스트", "승인 메모 작성"], kpi: "문서 검토 누락률 감소" },
+  { id: "tpl_operations_controller", lane: "operations", label: "운영·고객지원 담당", role: "Operations Controller",
+    capabilities: ["Mattermost 요청 정리", "인시던트 런북", "고객 응답 초안"], kpi: "운영 응답 시간 단축" },
+  { id: "tpl_control_ops", lane: "control", label: "관제·승인 담당", role: "Governance Controller",
+    capabilities: ["권한 정책 점검", "승인 큐 관리", "감사 로그 정리"], kpi: "외부 영향 작업 승인 추적 유지" }
 ]);
 
 // Expand a template definition into a full, render-ready preset including the
@@ -176,11 +178,11 @@ export function createAuditEvent(fields) {
 export function createDemoState() {
   const generatedAt = nowIso();
   const tenant = createTenant({
-    id: "tenant_mufi_manufacturing_demo",
-    name: "MUFI Manufacturing Demo",
-    slug: "mufi-manufacturing-demo",
-    productName: "BINDERY BOX Manufacturing",
-    edition: "manufacturing",
+    id: "tenant_bindery_platform_demo",
+    name: "BINDERY Box Platform Demo",
+    slug: "bindery-platform-demo",
+    productName: "BINDERY BOX",
+    edition: "platform",
     brandColor: "#111827",
     generatedAt
   });
@@ -188,119 +190,122 @@ export function createDemoState() {
   const workspace = createWorkspace({
     id: "ws_default",
     tenantId: tenant.id,
-    name: "Manufacturing Operations",
+    name: "AI Company Office",
     slug: "default",
-    editionId: "manufacturing",
-    officeRef: "team_manufacturing"
+    editionId: "platform",
+    officeRef: "team_platform"
   });
 
   const agents = [
     createAgentInstance({
-      id: "agent_production_leader",
+      id: "agent_engineering_operator",
       workspaceId: workspace.id,
-      definitionId: "def_production_leader",
-      name: "Production Leader",
-      role: "생산 리더",
-      channel: "#production",
-      lane: "production",
-      officeIdentityRef: "bot_production",
-      capabilityGrants: ["files.read", "mes.production.read"],
-      capabilities: ["생산일보 요약", "납기 위험 탐지", "비가동 원인 정리"],
-      persona: buildAgentPersona({ role: "생산 리더", lane: "production" }),
-      prompt: buildAgentPrompt({ role: "생산 리더", lane: "production" }),
-      kpi: "납기 위험 알림 시간 70% 단축"
+      definitionId: "def_engineering_operator",
+      name: "Engineering Operator",
+      role: "개발 업무 담당",
+      channel: "#engineering",
+      lane: "engineering",
+      officeIdentityRef: "bot_engineering",
+      capabilityGrants: ["github.repo.read", "github.pr.review", "paperclip.ticket.create"],
+      capabilities: ["GitHub 이슈 triage", "PR 리뷰 계획", "테스트 결과 요약"],
+      persona: buildAgentPersona({ role: "개발 업무 담당", lane: "engineering" }),
+      prompt: buildAgentPrompt({ role: "개발 업무 담당", lane: "engineering" }),
+      kpi: "개발 업무 리드타임 50% 단축"
     }),
     createAgentInstance({
-      id: "agent_sales_leader",
+      id: "agent_legal_reviewer",
       workspaceId: workspace.id,
-      definitionId: "def_sales_leader",
-      name: "Sales Leader",
-      role: "영업 리더",
-      channel: "#sales",
-      lane: "sales",
-      officeIdentityRef: "bot_sales",
-      capabilityGrants: ["files.read", "email.draft", "external.customer.send"],
-      capabilities: ["견적 후속 조치", "고객 응답 초안", "수주 가능성 요약"],
-      persona: buildAgentPersona({ role: "영업 리더", lane: "sales" }),
-      prompt: buildAgentPrompt({ role: "영업 리더", lane: "sales" }),
-      kpi: "견적 응답 리드타임 50% 단축"
+      definitionId: "def_legal_reviewer",
+      name: "Legal Reviewer",
+      role: "계약·정책 검토 담당",
+      channel: "#legal",
+      lane: "legal",
+      officeIdentityRef: "bot_legal",
+      capabilityGrants: ["files.read", "policy.review"],
+      capabilities: ["계약서 위험 조항 검토", "승인 메모 작성", "정책 체크리스트"],
+      persona: buildAgentPersona({ role: "계약·정책 검토 담당", lane: "legal" }),
+      prompt: buildAgentPrompt({ role: "계약·정책 검토 담당", lane: "legal" }),
+      kpi: "계약 검토 누락률 70% 감소"
     }),
     createAgentInstance({
-      id: "agent_scope3_leader",
+      id: "agent_operations_controller",
       workspaceId: workspace.id,
-      definitionId: "def_scope3_leader",
-      name: "Scope 3 Leader",
-      role: "공급망 탄소 대응 리더",
-      channel: "#scope3",
-      lane: "scope3",
-      officeIdentityRef: "bot_scope3",
-      capabilityGrants: ["files.read", "email.draft", "scope3.report.generate", "external.customer.send"],
-      capabilities: ["협력사 데이터 누락 탐지", "탄소 자료 요청 초안", "고객 ESG 대응"],
-      persona: buildAgentPersona({ role: "공급망 탄소 대응 리더", lane: "scope3" }),
-      prompt: buildAgentPrompt({ role: "공급망 탄소 대응 리더", lane: "scope3" }),
-      kpi: "탄소 데이터 누락률 80% 감소"
+      definitionId: "def_operations_controller",
+      name: "Operations Controller",
+      role: "운영·고객지원 담당",
+      channel: "#operations",
+      lane: "operations",
+      officeIdentityRef: "bot_operations",
+      capabilityGrants: ["mattermost.thread.read", "runbook.read", "mattermost.thread.post"],
+      capabilities: ["Mattermost 요청 정리", "인시던트 런북", "고객 응답 초안"],
+      persona: buildAgentPersona({ role: "운영·고객지원 담당", lane: "operations" }),
+      prompt: buildAgentPrompt({ role: "운영·고객지원 담당", lane: "operations" }),
+      kpi: "운영 응답 시간 60% 단축"
     }),
     createAgentInstance({
-      id: "agent_ops_controller",
+      id: "agent_governance_controller",
       workspaceId: workspace.id,
-      definitionId: "def_ops_controller",
-      name: "Ops Controller",
+      definitionId: "def_governance_controller",
+      name: "Governance Controller",
       role: "승인·감사 관리자",
       channel: "#approvals",
       lane: "control",
-      officeIdentityRef: "bot_ops",
+      officeIdentityRef: "bot_control",
       capabilityGrants: ["approval.manage", "audit.read"],
       capabilities: ["권한 정책", "승인 큐", "감사 로그"],
       persona: buildAgentPersona({ role: "승인·감사 관리자", lane: "control" }),
       prompt: buildAgentPrompt({ role: "승인·감사 관리자", lane: "control" }),
-      kpi: "외부 발송 100% 승인 추적"
+      kpi: "외부 영향 작업 100% 승인 추적"
     })
   ];
 
   const tasks = [
     createTask({
-      id: "task_production_risk",
+      id: "task_github_triage",
       workspaceId: workspace.id,
-      title: "오늘 생산일보 기반 납기 위험 3건 요약",
-      assignedAgentId: "agent_production_leader",
-      ownerAgentId: "agent_production_leader",
+      title: "GitHub 이슈와 PR 상태 triage",
+      assignedAgentId: "agent_engineering_operator",
+      ownerAgentId: "agent_engineering_operator",
       priority: "high",
-      category: "production",
-      requiredCapabilities: ["files.read", "mes.production.read"],
+      category: "engineering",
+      lane: "engineering",
+      requiredCapabilities: ["github.repo.read", "github.pr.review"],
       requiresApproval: false,
-      source: "examples/manufacturing-demo/data/production_daily.csv",
-      expectedOutput: "라인별 위험 요약 + 조치 제안"
+      source: "github:mupengi-bot/bindery-box",
+      expectedOutput: "이슈/PR 우선순위 + 다음 액션"
     }),
     createTask({
-      id: "task_sales_followup",
+      id: "task_contract_review",
       workspaceId: workspace.id,
-      title: "미응답 견적 고객 후속 메시지 초안 작성",
-      assignedAgentId: "agent_sales_leader",
-      ownerAgentId: "agent_sales_leader",
+      title: "계약서 위험 조항 검토 보고서 작성",
+      assignedAgentId: "agent_legal_reviewer",
+      ownerAgentId: "agent_legal_reviewer",
       priority: "normal",
-      category: "sales",
-      requiredCapabilities: ["files.read", "external.customer.send"],
+      category: "legal",
+      lane: "legal",
+      requiredCapabilities: ["files.read", "policy.review"],
       requiresApproval: true,
-      source: "examples/manufacturing-demo/data/orders.csv",
-      expectedOutput: "고객 발송 전 승인 대기 메시지"
+      source: "mattermost:#legal/thread-contract-review",
+      expectedOutput: "위험 조항 표 + 수정 제안 + 승인 메모"
     }),
     createTask({
-      id: "task_scope3_gap",
+      id: "task_ops_incident",
       workspaceId: workspace.id,
-      title: "Scope 3 협력사 탄소 데이터 누락 목록 생성",
-      assignedAgentId: "agent_scope3_leader",
-      ownerAgentId: "agent_scope3_leader",
+      title: "Mattermost 운영 인시던트 요청 정리",
+      assignedAgentId: "agent_operations_controller",
+      ownerAgentId: "agent_operations_controller",
       priority: "high",
-      category: "scope3",
-      requiredCapabilities: ["files.read", "scope3.report.generate", "external.customer.send"],
-      requiresApproval: true,
-      source: "examples/manufacturing-demo/data/scope3_suppliers.csv",
-      expectedOutput: "누락 공급사 목록 + 자료 요청 초안"
+      category: "operations",
+      lane: "operations",
+      requiredCapabilities: ["mattermost.thread.read", "runbook.read"],
+      requiresApproval: false,
+      source: "mattermost:#operations/thread-incident",
+      expectedOutput: "인시던트 요약 + 런북 다음 조치"
     })
   ];
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     tenant,
     workspace,
     workspaces: [workspace],
@@ -311,21 +316,24 @@ export function createDemoState() {
     approvals: [],
     events: [],
     officeEvents: [],
+    threads: [],
+    artifacts: [],
+    orchestratorRuns: [],
     auditEvents: [
       createAuditEvent({
         ts: generatedAt,
         actorType: "system",
         actor: "system",
-        action: "demo.seed",
+        action: "workspace.seed",
         target: tenant.id,
-        message: "제조업 데모 테넌트가 생성됨"
+        message: "범용 AI Company Office 워크스페이스가 생성됨"
       })
     ],
     metrics: {
-      manufacturingKpis: [
-        { label: "납기 위험 감지", value: "3건", trend: "+3" },
-        { label: "견적 후속 대상", value: "5건", trend: "+5" },
-        { label: "Scope 3 누락 공급사", value: "4곳", trend: "-" }
+      workflowKpis: [
+        { label: "GitHub triage", value: "1건", trend: "+1" },
+        { label: "승인 대기 문서", value: "1건", trend: "+1" },
+        { label: "Mattermost 인입", value: "1건", trend: "+1" }
       ]
     }
   };

@@ -15,6 +15,7 @@ import { FLOOR, LANE_ORDER, LANE_ZONES, MEETING_ROOM, STATUS_COLOR, type Vec2 } 
 // rendering language procedurally with baked shadows so the RTS office stays
 // lightweight and avoids WebGL context loss on constrained browsers.
 const OFFICE_HTML_Z: [number, number] = [4, 0];
+export type OfficeRenderMode = "balanced" | "lite";
 
 export interface MoveTarget {
   x: number;
@@ -65,9 +66,10 @@ export interface OfficeSceneProps {
   onSelect: (id: string) => void;
   onMoveSelected: (target: MoveTarget) => void;
   onRequestLane: (lane: LaneId) => void;
+  renderMode?: OfficeRenderMode;
 }
 
-export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelect, onMoveSelected, onRequestLane }: OfficeSceneProps) {
+export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelect, onMoveSelected, onRequestLane, renderMode = "balanced" }: OfficeSceneProps) {
   const placed = useMemo(() => layoutAgents(agents), [agents]);
   const routeByAgent = useMemo(() => {
     const seats = new Map(placed.map((p) => [p.agent.id, p.seat]));
@@ -89,7 +91,7 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
         intensity={1.18}
       />
 
-      <BakedContactShadows />
+      <BakedContactShadows renderMode={renderMode} />
 
       {/* floor */}
       <mesh
@@ -102,7 +104,7 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
         <planeGeometry args={[FLOOR.width, FLOOR.depth]} />
         <meshStandardMaterial color="#0d1425" roughness={0.88} metalness={0.08} />
       </mesh>
-      <FloorGrid />
+      <FloorGrid renderMode={renderMode} />
 
       {/* lane zones: rug + sign + key light */}
       {LANE_ORDER.map((laneId) => {
@@ -119,9 +121,9 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
               <ringGeometry args={[zone.half[1] * 0.97, zone.half[1], 4, 1]} />
               <meshBasicMaterial color={zone.color} transparent opacity={0.0} />
             </mesh>
-            <pointLight position={[cx, 4.2, cz]} intensity={0.42} color={zone.color} distance={14} />
+            {renderMode !== "lite" && <pointLight position={[cx, 4.2, cz]} intensity={0.42} color={zone.color} distance={14} />}
             {/* floating lane sign */}
-            <Html position={[cx, 3.1, cz]} center distanceFactor={16} zIndexRange={OFFICE_HTML_Z} pointerEvents="none">
+            {renderMode !== "lite" && <Html position={[cx, 3.1, cz]} center distanceFactor={16} zIndexRange={OFFICE_HTML_Z} pointerEvents="none">
               <div
                 style={{
                   whiteSpace: "nowrap",
@@ -138,15 +140,15 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
               >
                 {zone.glyph} {zone.label}
               </div>
-            </Html>
+            </Html>}
             <WorkRequestStation laneId={laneId} onRequestLane={onRequestLane} onMoveSelected={issueMove} selected={!!selectedId} />
           </group>
         );
       })}
 
       {/* richer procedural office shell + props */}
-      <OfficeProps />
-      <CeilingLights />
+      {renderMode !== "lite" && <OfficeProps />}
+      <CeilingLights renderMode={renderMode} />
 
       {/* perimeter low walls */}
       <PerimeterWalls />
@@ -206,6 +208,7 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
               phase={p.phase}
               selected={selectedId === p.agent.id}
               onSelect={onSelect}
+              compactLabels={renderMode === "lite"}
             />
           </group>
         );
@@ -218,12 +221,12 @@ export function OfficeScene({ agents, missions, selectedId, moveTargets, onSelec
   );
 }
 
-function BakedContactShadows() {
+function BakedContactShadows({ renderMode }: { renderMode: OfficeRenderMode }) {
   return (
     <group>
-      {[[0, 0, 12, 8, 0.18], [-8, -5, 6, 3.2, 0.12], [8, 5, 6, 3.2, 0.12], [0, 0, 4, 4, 0.16]].map(([x, z, sx, sz, opacity], i) => (
+      {(renderMode === "lite" ? [[0, 0, 12, 8, 0.14], [0, 0, 4, 4, 0.12]] : [[0, 0, 12, 8, 0.18], [-8, -5, 6, 3.2, 0.12], [8, 5, 6, 3.2, 0.12], [0, 0, 4, 4, 0.16]]).map(([x, z, sx, sz, opacity], i) => (
         <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.021 + i * 0.001, z]} scale={[sx, sz, 1]}>
-          <circleGeometry args={[1, 48]} />
+          <circleGeometry args={[1, renderMode === "lite" ? 24 : 48]} />
           <meshBasicMaterial color="#020611" transparent opacity={opacity} depthWrite={false} />
         </mesh>
       ))}
@@ -231,9 +234,9 @@ function BakedContactShadows() {
   );
 }
 
-function FloorGrid() {
+function FloorGrid({ renderMode }: { renderMode: OfficeRenderMode }) {
   const lines = [];
-  const step = 2;
+  const step = renderMode === "lite" ? 4 : 2;
   for (let x = -FLOOR.width / 2 + step; x < FLOOR.width / 2; x += step) {
     lines.push(<mesh key={`x-${x}`} position={[x, 0.028, 0]}><boxGeometry args={[0.018, 0.01, FLOOR.depth]} /><meshBasicMaterial color="#26304e" transparent opacity={0.28} /></mesh>);
   }
@@ -243,16 +246,16 @@ function FloorGrid() {
   return <group>{lines}</group>;
 }
 
-function CeilingLights() {
+function CeilingLights({ renderMode }: { renderMode: OfficeRenderMode }) {
   return (
     <group>
-      {[[-8, -5], [8, -5], [-8, 5], [8, 5], [0, 0]].map(([x, z], i) => (
+      {(renderMode === "lite" ? [[-8, -5], [8, 5], [0, 0]] : [[-8, -5], [8, -5], [-8, 5], [8, 5], [0, 0]]).map(([x, z], i) => (
         <group key={i} position={[x, 5.6, z]}>
           <mesh>
             <boxGeometry args={[2.8, 0.08, 0.18]} />
             <meshStandardMaterial color="#dbe7ff" emissive="#9fb9ff" emissiveIntensity={0.55} toneMapped={false} />
           </mesh>
-          <pointLight intensity={0.18} distance={9} color="#dce8ff" />
+          {renderMode !== "lite" && <pointLight intensity={0.18} distance={9} color="#dce8ff" />}
         </group>
       ))}
     </group>
@@ -276,11 +279,11 @@ function Plant({ position, scale = 1 }: { position: [number, number, number]; sc
   return (
     <group position={position} scale={scale}>
       <mesh position={[0, 0.32, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.36, 0.48, 0.64, 24]} />
+        <cylinderGeometry args={[0.36, 0.48, 0.64, 16]} />
         <meshStandardMaterial color="#f4efe5" roughness={0.42} />
       </mesh>
       <mesh position={[0, 0.67, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.34, 24]} />
+        <circleGeometry args={[0.34, 16]} />
         <meshStandardMaterial color="#21190f" roughness={0.85} />
       </mesh>
       {Array.from({ length: 7 }).map((_, i) => {
@@ -288,7 +291,7 @@ function Plant({ position, scale = 1 }: { position: [number, number, number]; sc
         return (
           <group key={i} position={[0, 0.8 + i * 0.04, 0]} rotation={[0.35, a, 0.35]}>
             <mesh position={[0.28, 0.18, 0]} castShadow>
-              <sphereGeometry args={[0.18, 16, 8]} />
+              <sphereGeometry args={[0.18, 10, 6]} />
               <meshStandardMaterial color={i % 2 ? "#1f8f58" : "#2bc274"} roughness={0.38} />
             </mesh>
           </group>
@@ -359,11 +362,11 @@ function MoveTargetMarker({ target }: { target: MoveTarget }) {
   return (
     <group position={[target.x, 0.055, target.z]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.42, 0.62, 36]} />
+        <ringGeometry args={[0.42, 0.62, 24]} />
         <meshBasicMaterial color="#21d4a8" transparent opacity={0.92} side={THREE.DoubleSide} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.1, 24]} />
+        <circleGeometry args={[0.1, 16]} />
         <meshBasicMaterial color="#21d4a8" transparent opacity={0.88} />
       </mesh>
       <Html position={[0, 0.8, 0]} center distanceFactor={14} zIndexRange={OFFICE_HTML_Z} pointerEvents="none">

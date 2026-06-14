@@ -34,7 +34,7 @@ async function main() {
   check("GET golden-image → Claw3D core identity", golden.status === 200 && golden.body.identity?.surface === "claw3d-3d-office" && golden.body.status?.planesTotal >= 6);
 
   // 6) knowledge search
-  const know = await handleRequest({ method: "GET", pathname: "/api/knowledge/search", searchParams: new URLSearchParams({ q: "납기" }) });
+  const know = await handleRequest({ method: "GET", pathname: "/api/knowledge/search", searchParams: new URLSearchParams({ q: "GitHub" }) });
   check("GET knowledge/search → results[]", know.status === 200 && Array.isArray(know.body.results));
 
   // 7) role templates for richer staff creation
@@ -46,7 +46,7 @@ async function main() {
   const preview = await handleRequest({
     method: "POST",
     pathname: "/api/workspaces/default/plan-preview",
-    body: { title: "생산 2라인 납기 위험 점검", lane: "production", requestedBy: "ci" },
+    body: { title: "GitHub PR 상태 triage", lane: "engineering", requestedBy: "ci" },
   });
   const afterPreviewWs = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/workstream" });
   check("POST plan-preview → PlanPreview", preview.status === 200 && preview.body.preview?.expectedArtifacts?.length > 0 && preview.body.preview?.confidence > 0, preview.body.preview?.assignedAgentName);
@@ -72,11 +72,49 @@ async function main() {
   const createdTask = await handleRequest({
     method: "POST",
     pathname: "/api/workspaces/default/tasks",
-    body: { title: "생산 구역 테스트 업무", lane: "production", enqueue: true, requestedBy: "ci" },
+    body: { title: "GitHub 이슈 테스트 업무", lane: "engineering", enqueue: true, requestedBy: "ci" },
   });
   check("POST workspace tasks → task.create", createdTask.status === 200 && createdTask.body.ok === true && createdTask.body.result?.task?.origin === "zone.work-request", createdTask.body.result?.task?.id);
 
-  // 11) task run + approval flow — pick a runnable mission from the workstream
+
+  // 11) Mattermost-like message ingest creates a real work item and orchestration boundary
+  const ingest = await handleRequest({
+    method: "POST",
+    pathname: "/api/workspaces/default/messages/ingest",
+    body: {
+      provider: "mattermost",
+      channelRef: "#engineering",
+      senderRef: "ci-user",
+      providerEventId: "ci-mm-1",
+      text: "GitHub PR #42 CI 실패 원인 정리해서 계획 보여줘",
+    },
+  });
+  check("POST message ingest → chat work item", ingest.status === 200 && ingest.body.ok === true && ingest.body.result?.thread?.provider === "mattermost" && ingest.body.result?.orchestratorRun?.provider === "paperclip-boundary", ingest.body.result?.task?.id);
+
+  const threads = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/threads" });
+  check("GET threads → ingested thread", threads.status === 200 && threads.body.threads?.some((t) => t.providerEventId === "ci-mm-1"));
+
+  const boundary = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/orchestration-boundary" });
+  check("GET orchestration-boundary → Paperclip/GitHub/Mattermost adapters", boundary.status === 200 && boundary.body.adapters?.some((a) => a.id === "paperclip") && boundary.body.runs?.length > 0);
+
+  const boundaryRun = await handleRequest({
+    method: "POST",
+    pathname: "/api/workspaces/default/orchestration-boundary/runs",
+    body: { taskId: createdTask.body.result.task.id, agentId: createdTask.body.result.agent.id, requestedBy: "ci", goal: "CI에서 Paperclip boundary 실행" },
+  });
+  check("POST orchestration-boundary/runs → Paperclip mock run", boundaryRun.status === 200 && boundaryRun.body.ok === true && boundaryRun.body.result?.artifact?.visibleInOffice === true, boundaryRun.body.result?.orchestratorRun?.id);
+
+  const reply = await handleRequest({
+    method: "POST",
+    pathname: `/api/workspaces/default/threads/${ingest.body.result.thread.id}/reply`,
+    body: { channelRef: "#engineering", text: "BINDERY mock reply: 실행 보고서가 생성되었습니다.", correlationId: ingest.body.result.thread.threadRef },
+  });
+  check("POST thread reply → Mattermost mock post", reply.status === 200 && reply.body.ok === true && reply.body.result?.post?.kind === "thread_reply");
+
+  const artifacts = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/artifacts" });
+  check("GET artifacts → visible office artifact", artifacts.status === 200 && artifacts.body.artifacts?.some((a) => a.visibleInOffice));
+
+  // 12) task run + approval flow — pick a runnable mission from the workstream
   const refreshedWs = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/workstream" });
   const runnable = refreshedWs.body.missions.find((m) => m.runnable);
   check("workstream has a runnable mission", !!runnable, runnable?.taskId);

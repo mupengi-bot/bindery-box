@@ -150,6 +150,96 @@ export async function handleRequest({
     return { status: 200, body: projection };
   }
 
+
+  // --- real-world work intake / orchestration boundary ---
+  const ingestMessageMatch = route.match(/^\/workspaces\/([^/]+)\/messages\/ingest$/);
+  if (method === "POST" && ingestMessageMatch) {
+    const outcome = await executeCommand({
+      store,
+      command: {
+        type: CommandType.userMessageIngest,
+        workspaceId: ingestMessageMatch[1],
+        provider: body.provider ?? "mattermost",
+        channelRef: body.channelRef ?? "#operations",
+        threadRef: body.threadRef,
+        senderRef: body.senderRef ?? body.requestedBy ?? "operator",
+        text: body.text ?? body.message ?? "",
+        providerEventId: body.providerEventId ?? `mock-${Date.now()}`,
+        lane: body.lane,
+      },
+      office: office(),
+    });
+    return { status: 200, body: { ok: outcome.ok, decision: outcome.decision, result: outcome.result, state: outcome.state } };
+  }
+
+
+  const threadReplyMatch = route.match(/^\/workspaces\/([^/]+)\/threads\/([^/]+)\/reply$/);
+  if (method === "POST" && threadReplyMatch) {
+    const outcome = await executeCommand({
+      store,
+      command: {
+        type: CommandType.officeMessagePost,
+        workspaceId: threadReplyMatch[1],
+        threadId: threadReplyMatch[2],
+        channelRef: body.channelRef ?? "#tasks",
+        text: body.text ?? "",
+        correlationId: body.correlationId ?? threadReplyMatch[2],
+        actor: body.actor ?? "bindery-bot",
+        provider: body.provider ?? "mattermost-mock",
+      },
+    });
+    return { status: 200, body: { ok: outcome.ok, decision: outcome.decision, result: outcome.result, state: outcome.state } };
+  }
+
+  const boundaryRunMatch = route.match(/^\/workspaces\/([^/]+)\/orchestration-boundary\/runs$/);
+  if (method === "POST" && boundaryRunMatch) {
+    const outcome = await executeCommand({
+      store,
+      command: {
+        type: CommandType.agentRunEnqueue,
+        workspaceId: boundaryRunMatch[1],
+        taskId: body.taskId,
+        agentId: body.agentId,
+        requestedBy: body.requestedBy ?? "operator",
+        goal: body.goal ?? body.taskTitle ?? body.taskId,
+        externalRef: body.externalRef,
+      },
+      office: office(),
+    });
+    return { status: 200, body: { ok: outcome.ok, decision: outcome.decision, result: outcome.result, state: outcome.state } };
+  }
+
+  const artifactsMatch = route.match(/^\/workspaces\/([^/]+)\/artifacts$/);
+  if (method === "GET" && artifactsMatch) {
+    const state = await store.load();
+    const wsId = artifactsMatch[1] === "default" ? (state.workspace?.id ?? "ws_default") : artifactsMatch[1];
+    return { status: 200, body: { artifacts: (state.artifacts ?? []).filter((a) => !a.workspaceId || a.workspaceId === wsId) } };
+  }
+
+  const threadsMatch = route.match(/^\/workspaces\/([^/]+)\/threads$/);
+  if (method === "GET" && threadsMatch) {
+    const state = await store.load();
+    const wsId = threadsMatch[1] === "default" ? (state.workspace?.id ?? "ws_default") : threadsMatch[1];
+    return { status: 200, body: { threads: (state.threads ?? []).filter((t) => !t.workspaceId || t.workspaceId === wsId) } };
+  }
+
+  const orchestrationMatch = route.match(/^\/workspaces\/([^/]+)\/orchestration-boundary$/);
+  if (method === "GET" && orchestrationMatch) {
+    const state = await store.load();
+    return {
+      status: 200,
+      body: {
+        workspaceId: orchestrationMatch[1],
+        adapters: [
+          { id: "paperclip", status: "mock-boundary", purpose: "tickets, delegation, budget/governance", credentialState: "not_required_for_mock" },
+          { id: "github", status: "mock-boundary", purpose: "issues, PRs, code review targets", credentialState: "redacted" },
+          { id: "mattermost", status: "mock-boundary", purpose: "human office threads and approvals", credentialState: "redacted" },
+        ],
+        runs: state.orchestratorRuns ?? [],
+      },
+    };
+  }
+
   // --- platform command endpoints ---
   const runMatch = route.match(/^\/tasks\/([^/]+)\/run$/);
   if (method === "POST" && runMatch) {
