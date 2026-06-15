@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bindery-box.local/contracts/multi-user-hardware-contract.json",
+  "version": "0.1.0",
+  "title": "BINDERY BOX Multi-user Hardware Path Contract",
+  "requiredEntities": [
+    "HumanUser",
+    "HardwareNode",
+    "AccessRoute",
+    "Workspace"
+  ],
+  "roles": [
+    "owner",
+    "operator",
+    "approver",
+    "viewer",
+    "system"
+  ],
+  "surfaces": [
+    "mission-control",
+    "human-office",
+    "runtime",
+    "3d-office"
+  ],
+  "api": [
+    {
+      "method": "GET",
+      "path": "/api/workspaces/:id/access-topology",
+      "description": "Project users, hardware nodes, and access routes for a workspace."
+    },
+    {
+      "method": "GET",
+      "path": "/api/hardware/routes",
+      "description": "List public-safe appliance route metadata."
+    }
+  ],
+  "invariant": "user -> role/session -> workspace -> hardware route -> control plane -> runtime/office projection",
+  "forbidden": [
+    "raw secrets in route metadata",
+    "UI-local hardware routing",
+    "hardware node direct task mutation",
+    "provider ID as primary user ID"
+  ]
+}

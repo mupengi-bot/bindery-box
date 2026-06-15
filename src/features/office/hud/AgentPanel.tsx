@@ -1,6 +1,7 @@
 "use client";
 
 import type { AgentPerformance, Mission, WorkstreamAgent } from "../types";
+import { type AgentCognition } from "../scene/projection";
 import { STATUS_COLOR } from "../scene/sceneConfig";
 import { Bar, Sparkline, trendArrow, trendColor } from "./ui";
 
@@ -9,6 +10,7 @@ import { Bar, Sparkline, trendArrow, trendColor } from "./ui";
 // active mission, with a one-tap dispatch for any runnable work it owns.
 export function AgentPanel({
   agent,
+  cognition,
   perf,
   missions,
   onRun,
@@ -16,6 +18,7 @@ export function AgentPanel({
   busy,
 }: {
   agent: WorkstreamAgent;
+  cognition?: AgentCognition;
   perf: AgentPerformance | undefined;
   missions: Mission[];
   onRun: (taskId: string) => void;
@@ -77,6 +80,19 @@ export function AgentPanel({
         ) : null}
       </div>
 
+      {cognition && (
+        <div className="bx-panel" style={{ marginTop: 12, padding: 11, borderRadius: 12, background: "rgba(255,255,255,0.035)", border: `1px solid ${cognition.color}55` }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+            <div style={{ fontSize: 10.5, color: cognition.color, fontWeight: 900, letterSpacing: "0.08em" }}>COGNITION</div>
+            <div className="bx-chip" style={{ color: cognition.color, borderColor: `${cognition.color}66`, background: `${cognition.color}12` }}>{cognition.icon} {cognition.label}</div>
+          </div>
+          <CognitionRow label="목표" value={cognition.goal} />
+          <CognitionRow label="컨텍스트" value={cognition.context} />
+          <CognitionRow label="판단" value={cognition.decision} />
+          <CognitionRow label="리스크" value={cognition.risk} />
+          {cognition.output && <CognitionRow label="산출물" value={cognition.output} />}
+        </div>
+      )}
 
       {(agent.persona || agent.prompt) && (
         <div className="bx-panel" style={{ marginTop: 12, padding: 11, borderRadius: 12, background: "rgba(255,255,255,0.025)" }}>
@@ -117,6 +133,15 @@ export function AgentPanel({
           {busy ? "디스패치 중…" : `▸ ${runnable.title} 실행`}
         </button>
       )}
+    </div>
+  );
+}
+
+function CognitionRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "54px 1fr", gap: 8, marginTop: 5, fontSize: 10.8, lineHeight: 1.35 }}>
+      <span style={{ color: "var(--bx-muted)", fontWeight: 800 }}>{label}</span>
+      <span style={{ color: "var(--bx-text)" }}>{value}</span>
     </div>
   );
 }

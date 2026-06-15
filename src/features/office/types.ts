@@ -145,6 +145,59 @@ export interface Objective {
   status: "done" | "progress" | "open";
 }
 
+export interface LaneStaffingHealth {
+  lane: LaneId;
+  label: string;
+  agentCount: number;
+  missionCount: number;
+  load: number;
+  health: "healthy" | "watch" | "gap";
+  capacityLabel: string;
+  skillGap: string;
+  recommendedHireRole: string;
+  nextAction: string;
+}
+
+export interface RecommendedHire {
+  id: string;
+  lane: LaneId;
+  laneLabel: string;
+  role: string;
+  name: string;
+  reason: string;
+  firstMission: string;
+  governanceNote: string;
+  capabilities: string[];
+}
+
+export interface OperatingMilestone {
+  id: string;
+  label: string;
+  done: number;
+  total: number;
+  status: "done" | "progress" | "open";
+  meaning: string;
+  unlocks: string;
+}
+
+export interface CoachingHint {
+  id: string;
+  severity: "info" | "warn" | "high";
+  title: string;
+  action: string;
+  lane?: LaneId;
+  agentId?: string;
+}
+
+export interface AgentOpsStrategy {
+  headline: string;
+  principle: string;
+  laneHealth: LaneStaffingHealth[];
+  recommendedHires: RecommendedHire[];
+  operatingMilestones: OperatingMilestone[];
+  coachingHints: CoachingHint[];
+}
+
 export interface Workstream {
   workspaceId: string;
   generatedAt: string;
@@ -169,7 +222,7 @@ export interface Workstream {
   pipeline: { stages: { id: string; label: string; count: number }[] };
   objectives: Objective[];
   alerts: Alert[];
-  achievements: { id: string; icon: string; label: string; desc: string; unlocked: boolean }[];
+  agentOpsStrategy: AgentOpsStrategy;
   stream: StreamBeat[];
   agentPerformance: AgentPerformance[];
   market: {
@@ -279,4 +332,79 @@ export interface RoleTemplate {
   kpi: string;
   persona: string;
   promptPreview: string;
+}
+
+// --- Orchestration boundary projections (Phase 3) ---------------------------
+// Mattermost threads, runtime adapter runs and produced artifacts are surfaced by
+// the control plane (GET /office/threads, /runtime/runs, /artifacts) and
+// projected into visible signals in the 3D office. These mirror the shapes
+// produced by packages/runtime (handleUserMessageIngest / handleAgentRunEnqueue).
+
+export interface ThreadReply {
+  id: string;
+  actor: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface OfficeThread {
+  id: string;
+  workspaceId?: string;
+  provider: string;
+  channelRef: string;
+  threadRef: string;
+  senderRef?: string;
+  providerEventId?: string;
+  linkedWorkItemId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  lastMessage?: string;
+  lastReply?: string;
+  replies?: ThreadReply[];
+}
+
+export type OrchestratorRunStatus = "planned" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
+
+export interface OrchestratorRun {
+  id: string;
+  workspaceId?: string;
+  taskId?: string;
+  agentId?: string;
+  provider: string;
+  status: OrchestratorRunStatus | string;
+  adapters?: string[];
+  externalRef?: string | null;
+  goal?: string;
+  policyDecision?: string;
+  approvalId?: string | null;
+  artifactId?: string;
+  note?: string;
+  createdAt?: string;
+  startedAt?: string | null;
+  completedAt?: string;
+}
+
+export interface OrchestrationAdapter {
+  id: string;
+  status: string;
+  purpose: string;
+  credentialState: string;
+}
+
+export interface OrchestrationBoundary {
+  workspaceId: string;
+  adapters: OrchestrationAdapter[];
+  runs: OrchestratorRun[];
+}
+
+export interface Artifact {
+  id: string;
+  workspaceId?: string;
+  type: string;
+  title: string;
+  contentRef?: string;
+  sourceRunId?: string;
+  visibleInOffice?: boolean;
+  createdAt?: string;
+  summary?: string;
 }

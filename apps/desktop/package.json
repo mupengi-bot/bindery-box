@@ -1,0 +1,55 @@
+{
+  "name": "@bindery-box/desktop-shell",
+  "productName": "BINDERY BOX Desktop",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "description": "Electron shell scaffold for BINDERY BOX Desktop local workbench.",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "check": "node ../../scripts/validate-desktop-shell.mjs",
+    "package:mac": "electron-builder --mac dmg dir --config.mac.identity=null --publish=never",
+    "package:dir": "electron-builder --mac dir --config.mac.identity=null --publish=never"
+  },
+  "build": {
+    "appId": "box.bindery.desktop",
+    "productName": "BINDERY BOX Desktop",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "dir"
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "BINDERY BOX Desktop ${version}",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3"
+  }
+}

@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import type { OfficeVisualTheme } from "./sceneConfig";
 
 export interface DeskProps {
   position: [number, number, number];
@@ -11,13 +12,19 @@ export interface DeskProps {
   screenColor: string;
   /** Animate the monitor glow when the owning agent is active. */
   active?: boolean;
+  visualTheme?: OfficeVisualTheme;
 }
 
 // A retro low-poly workstation: desk slab, two monitors with an emissive
 // screen, a chair and a desk lamp. The screen brightness pulses while the
 // owning agent is running so the office reads as "alive" from across the room.
-export function Desk({ position, rotation = 0, screenColor, active = false }: DeskProps) {
+export function Desk({ position, rotation = 0, screenColor, active = false, visualTheme }: DeskProps) {
   const screen = useRef<THREE.MeshStandardMaterial>(null);
+  const deskColor = visualTheme?.desk ?? "#6b4a2f";
+  const legColor = visualTheme?.id === "comfort" ? "#7b6b5b" : "#3a3a44";
+  const monitorColor = visualTheme?.id === "comfort" ? "#f3f0e8" : "#16181f";
+  const chairColor = visualTheme?.id === "comfort" ? "#d7c6ad" : "#23262f";
+  const baseColor = visualTheme?.id === "comfort" ? "#8a7b66" : "#2a2c34";
 
   useFrame((state) => {
     if (!screen.current) return;
@@ -32,7 +39,7 @@ export function Desk({ position, rotation = 0, screenColor, active = false }: De
       {/* desk top */}
       <mesh castShadow receiveShadow position={[0, 0.74, 0]}>
         <boxGeometry args={[1.7, 0.07, 0.85]} />
-        <meshStandardMaterial color="#6b4a2f" roughness={0.65} />
+        <meshStandardMaterial color={deskColor} roughness={0.65} />
       </mesh>
       {/* legs */}
       {[
@@ -43,14 +50,14 @@ export function Desk({ position, rotation = 0, screenColor, active = false }: De
       ].map(([x, z], i) => (
         <mesh key={i} position={[x, 0.37, z]}>
           <boxGeometry args={[0.07, 0.74, 0.07]} />
-          <meshStandardMaterial color="#3a3a44" roughness={0.7} metalness={0.2} />
+          <meshStandardMaterial color={legColor} roughness={0.7} metalness={0.08} />
         </mesh>
       ))}
       {/* monitor */}
       <group position={[0, 0.78, -0.2]}>
         <mesh castShadow position={[0, 0.34, 0]}>
           <boxGeometry args={[0.78, 0.46, 0.05]} />
-          <meshStandardMaterial color="#16181f" roughness={0.5} />
+          <meshStandardMaterial color={monitorColor} roughness={0.5} />
         </mesh>
         <mesh position={[0, 0.34, 0.03]}>
           <planeGeometry args={[0.68, 0.36]} />
@@ -64,26 +71,26 @@ export function Desk({ position, rotation = 0, screenColor, active = false }: De
         </mesh>
         <mesh position={[0, 0.08, 0]}>
           <cylinderGeometry args={[0.04, 0.06, 0.16, 8]} />
-          <meshStandardMaterial color="#2a2c34" />
+          <meshStandardMaterial color={baseColor} />
         </mesh>
         <mesh position={[0, 0.01, 0]}>
           <boxGeometry args={[0.26, 0.02, 0.16]} />
-          <meshStandardMaterial color="#2a2c34" />
+          <meshStandardMaterial color={baseColor} />
         </mesh>
       </group>
       {/* chair */}
       <group position={[0, 0, 0.7]}>
         <mesh position={[0, 0.45, 0]}>
           <boxGeometry args={[0.5, 0.08, 0.5]} />
-          <meshStandardMaterial color="#23262f" roughness={0.8} />
+          <meshStandardMaterial color={chairColor} roughness={0.8} />
         </mesh>
         <mesh position={[0, 0.72, 0.22]}>
           <boxGeometry args={[0.5, 0.5, 0.08]} />
-          <meshStandardMaterial color="#23262f" roughness={0.8} />
+          <meshStandardMaterial color={chairColor} roughness={0.8} />
         </mesh>
         <mesh position={[0, 0.22, 0]}>
           <cylinderGeometry args={[0.04, 0.04, 0.45, 8]} />
-          <meshStandardMaterial color="#15161c" />
+          <meshStandardMaterial color={baseColor} />
         </mesh>
       </group>
     </group>

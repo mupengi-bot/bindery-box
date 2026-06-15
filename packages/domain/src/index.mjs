@@ -261,6 +261,20 @@ export function createDemoState() {
 
   const tasks = [
     createTask({
+      id: "task_first_work_order",
+      workspaceId: workspace.id,
+      title: "첫 업무: BINDERY 운영 상태 점검하고 다음 액션 제안",
+      assignedAgentId: "agent_operations_controller",
+      ownerAgentId: "agent_operations_controller",
+      priority: "high",
+      category: "operations",
+      lane: "operations",
+      requiredCapabilities: ["mattermost.thread.read", "runbook.read"],
+      requiresApproval: false,
+      source: "setup:ready-to-work",
+      expectedOutput: "현재 연결 상태 요약 + 바로 실행 가능한 운영 액션 3개"
+    }),
+    createTask({
       id: "task_github_triage",
       workspaceId: workspace.id,
       title: "GitHub 이슈와 PR 상태 triage",
@@ -304,11 +318,100 @@ export function createDemoState() {
     })
   ];
 
+  const humanUsers = [
+    {
+      id: "user_owner",
+      tenantId: tenant.id,
+      workspaceId: workspace.id,
+      displayName: "Owner Operator",
+      role: "owner",
+      status: "active",
+      messengerIdentities: [{ provider: "mattermost", teamRef: workspace.officeRef, userRef: "owner", handle: "owner" }],
+      createdAt: generatedAt,
+      updatedAt: generatedAt
+    },
+    {
+      id: "user_approver",
+      tenantId: tenant.id,
+      workspaceId: workspace.id,
+      displayName: "Approval Manager",
+      role: "approver",
+      status: "active",
+      messengerIdentities: [{ provider: "mattermost", teamRef: workspace.officeRef, userRef: "approver", handle: "approver" }],
+      createdAt: generatedAt,
+      updatedAt: generatedAt
+    }
+  ];
+
+  const hardwareNodes = [
+    {
+      id: "hw_bindery_appliance_01",
+      tenantId: tenant.id,
+      workspaceId: workspace.id,
+      label: "BINDERY Local Appliance",
+      kind: "appliance",
+      status: "online",
+      networkScope: "lan",
+      role: "control-runtime-office",
+      endpointRef: "https://bindery.local",
+      capabilities: ["control-plane", "runtime-worker", "office-proxy", "local-storage"],
+      createdAt: generatedAt,
+      lastSeenAt: generatedAt
+    }
+  ];
+
+  const accessRoutes = [
+    {
+      id: "route_owner_console",
+      tenantId: tenant.id,
+      workspaceId: workspace.id,
+      hardwareNodeId: "hw_bindery_appliance_01",
+      surface: "mission-control",
+      path: "/",
+      audience: "owner",
+      authMode: "local-session",
+      status: "ready"
+    },
+    {
+      id: "route_human_office",
+      tenantId: tenant.id,
+      workspaceId: workspace.id,
+      hardwareNodeId: "hw_bindery_appliance_01",
+      surface: "human-office",
+      path: "/api/office/messages/ingest",
+      audience: "operator",
+      authMode: "signed-webhook",
+      status: "ready"
+    },
+    {
+      id: "route_runtime_worker",
+      tenantId: tenant.id,
+      workspaceId: workspace.id,
+      hardwareNodeId: "hw_bindery_appliance_01",
+      surface: "runtime",
+      path: "/api/workspaces/default/runtime/runs",
+      audience: "system",
+      authMode: "service-token-ref",
+      status: "ready"
+    }
+  ];
+
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     tenant,
     workspace,
     workspaces: [workspace],
+    humanUsers,
+    hardwareNodes,
+    accessRoutes,
+    localDevice: {
+      mode: "desktop-local-device",
+      defaultSurface: "desktop-workbench",
+      dataLeavesDevice: false,
+      externalEffectsRequireApproval: true,
+      workspaceScopes: [],
+      accessPolicyRef: "local-device-only"
+    },
     agents,
     tasks,
     taskRuns: [],
@@ -316,9 +419,58 @@ export function createDemoState() {
     approvals: [],
     events: [],
     officeEvents: [],
-    threads: [],
-    artifacts: [],
-    orchestratorRuns: [],
+    // Seeded orchestration signals so the 3D office shows visible run/thread/
+    // artifact projections on a fresh demo, before any operator action. These
+    // reference the seeded agents/tasks and stay public-safe (mock boundary).
+    threads: [
+      {
+        id: "thread_setup_ready", workspaceId: workspace.id, provider: "mattermost",
+        channelRef: "#tasks", threadRef: "#tasks:setup-ready", senderRef: "owner",
+        providerEventId: "seed-mm-setup-ready", linkedWorkItemId: "task_first_work_order", createdAt: generatedAt,
+        lastMessage: "초기 세팅 완료. 운영 상태 점검하고 바로 실행할 다음 액션을 제안해줘."
+      },
+      {
+        id: "thread_ops_incident", workspaceId: workspace.id, provider: "mattermost",
+        channelRef: "#operations", threadRef: "#operations:seed-incident", senderRef: "ops-user",
+        providerEventId: "seed-mm-ops", linkedWorkItemId: "task_ops_incident", createdAt: generatedAt,
+        lastMessage: "결제 모듈 응답 지연 인시던트 정리 요청드립니다."
+      },
+      {
+        id: "thread_legal_contract", workspaceId: workspace.id, provider: "mattermost",
+        channelRef: "#legal", threadRef: "#legal:seed-contract", senderRef: "legal-user",
+        providerEventId: "seed-mm-legal", linkedWorkItemId: "task_contract_review", createdAt: generatedAt,
+        lastMessage: "신규 공급계약서 위험 조항 검토 부탁합니다."
+      }
+    ],
+    artifacts: [
+      {
+        id: "art_ops_report", workspaceId: workspace.id, type: "run-report",
+        title: "운영 인시던트 정리 보고서", contentRef: "artifact://task_ops_incident/incident-report",
+        sourceRunId: "orch_ops_done", visibleInOffice: true, createdAt: generatedAt,
+        summary: "Operations Controller가 인시던트 요약과 런북 다음 조치를 정리했습니다."
+      }
+    ],
+    orchestratorRuns: [
+      {
+        id: "orch_eng_running", workspaceId: workspace.id, taskId: "task_github_triage",
+        agentId: "agent_engineering_operator", provider: "paperclip-boundary", status: "running",
+        adapters: ["paperclip", "github", "mattermost"], externalRef: null, goal: "GitHub 이슈/PR triage 실행",
+        policyDecision: "allow", approvalId: null, createdAt: generatedAt, startedAt: generatedAt
+      },
+      {
+        id: "orch_legal_wait", workspaceId: workspace.id, taskId: "task_contract_review",
+        agentId: "agent_legal_reviewer", provider: "paperclip-boundary", status: "waiting_approval",
+        adapters: ["paperclip", "mattermost"], externalRef: null, goal: "계약서 위험 조항 검토 실행",
+        policyDecision: "require_approval", approvalId: null, createdAt: generatedAt, startedAt: null
+      },
+      {
+        id: "orch_ops_done", workspaceId: workspace.id, taskId: "task_ops_incident",
+        agentId: "agent_operations_controller", provider: "paperclip-boundary", status: "completed",
+        adapters: ["paperclip", "mattermost"], externalRef: null, goal: "Mattermost 인시던트 요청 정리",
+        policyDecision: "allow", approvalId: null, artifactId: "art_ops_report",
+        createdAt: generatedAt, startedAt: generatedAt, completedAt: generatedAt
+      }
+    ],
     auditEvents: [
       createAuditEvent({
         ts: generatedAt,

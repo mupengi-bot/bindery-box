@@ -46,7 +46,7 @@ export function FirstRunOverlay({ workstream, onSkip, onRun }: { workstream: Wor
         display: "grid",
         placeItems: "center",
         padding: 24,
-        background: "radial-gradient(circle at 50% 38%, rgba(91,140,255,0.22), rgba(3,6,14,0.82) 45%, rgba(3,6,14,0.94))",
+        background: "radial-gradient(circle at 50% 38%, rgba(255,255,255,0.58), rgba(245,242,234,0.76) 45%, rgba(235,230,220,0.9))",
         backdropFilter: "blur(8px)",
       }}
     >
@@ -56,8 +56,8 @@ export function FirstRunOverlay({ workstream, onSkip, onRun }: { workstream: Wor
           width: "min(940px, 94vw)",
           padding: 24,
           borderRadius: 26,
-          background: "linear-gradient(145deg, rgba(15,22,44,0.94), rgba(8,12,24,0.88))",
-          boxShadow: "0 34px 120px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.08)",
+          background: "linear-gradient(145deg, rgba(255,252,245,0.94), rgba(248,246,240,0.88))",
+          boxShadow: "0 34px 120px rgba(56,46,34,0.18), inset 0 1px 0 rgba(255,255,255,0.85)",
         }}
       >
         <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 22, alignItems: "stretch" }}>
@@ -65,7 +65,7 @@ export function FirstRunOverlay({ workstream, onSkip, onRun }: { workstream: Wor
             <div className="bx-chip" style={{ color: "var(--bx-accent-2)", marginBottom: 16 }}>
               ◉ AI COMPANY OFFICE · FIRST RUN
             </div>
-            <h1 style={{ margin: 0, fontSize: "clamp(32px, 5vw, 62px)", lineHeight: 0.96, letterSpacing: "-0.055em", color: "#f4f7ff" }}>
+            <h1 style={{ margin: 0, fontSize: "clamp(32px, 5vw, 62px)", lineHeight: 0.96, letterSpacing: "-0.055em", color: "var(--bx-text)" }}>
               회사 안에 작은 AI 운영팀을 설치합니다.
             </h1>
             <p style={{ margin: "18px 0 0", maxWidth: 640, color: "var(--bx-muted)", fontSize: 15.5, lineHeight: 1.65 }}>
@@ -80,12 +80,12 @@ export function FirstRunOverlay({ workstream, onSkip, onRun }: { workstream: Wor
                   style={{
                     textAlign: "left",
                     minHeight: 148,
-                    border: "1px solid rgba(120,150,220,0.22)",
+                    border: "1px solid var(--bx-border)",
                     borderRadius: 18,
                     padding: 15,
                     cursor: "pointer",
                     color: "var(--bx-text)",
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.025))",
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,250,240,0.52))",
                   }}
                 >
                   <div style={{ width: 38, height: 38, borderRadius: 14, display: "grid", placeItems: "center", background: "rgba(91,140,255,0.16)", color: "var(--bx-accent)", fontSize: 20, marginBottom: 14 }}>{o.glyph}</div>
@@ -138,7 +138,7 @@ export function FirstRunOverlay({ workstream, onSkip, onRun }: { workstream: Wor
 
 function Snapshot({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div style={{ padding: 12, borderRadius: 14, background: "rgba(8,12,24,0.72)", border: "1px solid rgba(120,150,220,0.14)" }}>
+    <div style={{ padding: 12, borderRadius: 14, background: "rgba(255,255,255,0.62)", border: "1px solid var(--bx-border)" }}>
       <div style={{ fontSize: 10, color: "var(--bx-muted)", letterSpacing: "0.08em" }}>{label}</div>
       <div style={{ marginTop: 4, fontSize: 20, fontWeight: 900, color: accent ?? "var(--bx-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
     </div>

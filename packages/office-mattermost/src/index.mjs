@@ -6,7 +6,7 @@
 import { makeId, nowIso } from "../../domain/src/index.mjs";
 
 // Maps a runtime event to a channel + human-facing message, or null to skip.
-function projectEvent(event) {
+export function projectEvent(event) {
   switch (event.type) {
     case "task.created":
       return { channel: "#tasks", kind: "task_created", text: `새 업무 생성: ${event.title ?? event.taskId}` };
@@ -16,6 +16,16 @@ function projectEvent(event) {
       return { channel: "#tasks", kind: "task_result", text: `업무 완료: ${event.resultSummary ?? event.taskId}` };
     case "task.run.failed":
       return { channel: "#tasks", kind: "task_failed", text: `업무 실패: ${event.error ?? event.taskId}` };
+    case "agent.run.queued":
+      return { channel: "#tasks", kind: "agent_run_queued", text: `실행 큐 등록: ${event.goal ?? event.taskId}` };
+    case "agent.run.started":
+      return { channel: "#tasks", kind: "agent_run_started", text: `에이전트 실행 시작: ${event.taskId}` };
+    case "agent.stream.delta":
+      return { channel: "#ops-control", kind: "agent_stream", text: `진행: ${event.delta ?? event.taskId}` };
+    case "agent.run.completed":
+      return { channel: "#tasks", kind: "agent_run_completed", text: `에이전트 실행 완료: ${event.resultSummary ?? event.taskId}` };
+    case "agent.run.cancelled":
+      return { channel: "#ops-control", kind: "agent_run_cancelled", text: `에이전트 실행 취소: ${event.reason ?? event.orchestratorRunId}` };
     case "approval.requested":
       return { channel: "#approvals", kind: "approval_post", text: `승인 요청: ${event.reason ?? event.approvalId} (Mission Control에서 결정)` };
     case "approval.decided":
@@ -54,6 +64,63 @@ export function createMockOfficeAdapter(options = {}) {
 
   return {
     provider: "mattermost-mock",
+    teamRef,
+    handleEvent,
+    handleEvents,
+    getPosts: () => posts.slice()
+  };
+}
+
+export function createMattermostOfficeAdapter({ baseUrl, token, teamRef = "team_platform", channelMap = {} } = {}) {
+  if (!baseUrl || !token) throw new Error("Mattermost adapter requires BINDERY_MATTERMOST_URL and BINDERY_MATTERMOST_TOKEN");
+  const posts = [];
+
+  async function postToMattermost(projection, event) {
+    const channelId = channelMap[projection.channel] ?? projection.channelId;
+    if (!channelId) {
+      throw new Error(`Mattermost channel mapping missing for ${projection.channel}`);
+    }
+    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/v4/posts`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ channel_id: channelId, message: projection.text }),
+    });
+    if (!res.ok) throw new Error(`Mattermost post failed: ${res.status}`);
+    const body = await res.json();
+    return {
+      id: makeId("office"),
+      provider: "mattermost",
+      teamRef,
+      channelRef: projection.channel,
+      channelId,
+      providerPostId: body.id,
+      kind: projection.kind,
+      text: projection.text,
+      sourceEventId: event.id ?? null,
+      sourceEventType: event.type,
+      postedAt: nowIso()
+    };
+  }
+
+  async function handleEvent(event) {
+    const projection = projectEvent(event);
+    if (!projection) return null;
+    const post = await postToMattermost(projection, event);
+    posts.push(post);
+    return post;
+  }
+
+  async function handleEvents(events) {
+    const out = [];
+    for (const event of events) {
+      const post = await handleEvent(event);
+      if (post) out.push(post);
+    }
+    return out;
+  }
+
+  return {
+    provider: "mattermost",
     teamRef,
     handleEvent,
     handleEvents,

@@ -169,6 +169,16 @@
       "description": "Queue a task for a real agent runtime worker."
     },
     {
+      "type": "agent.run.cancel",
+      "surface": "runtime",
+      "requiredFields": [
+        "runId",
+        "requestedBy",
+        "reason"
+      ],
+      "description": "Cancel a queued or running agent runtime job through the Control Plane."
+    },
+    {
       "type": "office.message.post",
       "surface": "system",
       "requiredFields": [
@@ -253,6 +263,18 @@
         "audit"
       ],
       "description": "The runtime completed an agent job."
+    },
+    {
+      "type": "agent.run.cancelled",
+      "source": "runtime",
+      "projection": [
+        "workstream",
+        "3d-office",
+        "messenger-thread",
+        "live-log",
+        "audit"
+      ],
+      "description": "The runtime cancelled an agent job and projected the interruption."
     },
     {
       "type": "approval.requested",

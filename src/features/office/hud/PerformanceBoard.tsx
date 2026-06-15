@@ -7,6 +7,9 @@ export function PerformanceBoard({ workstream }: { workstream: Workstream | null
   const performers = workstream?.agentPerformance.slice(0, 5) ?? [];
   const watchlist = workstream?.watchlist.slice(0, 3) ?? [];
   const indices = workstream?.market.indices.slice(0, 3) ?? [];
+  const strategy = workstream?.agentOpsStrategy ?? null;
+  const strategyLanes = strategy?.laneHealth.filter((lane) => lane.health !== "healthy").slice(0, 2) ?? [];
+  const milestones = strategy?.operatingMilestones.slice(0, 3) ?? [];
 
   if (!workstream) return null;
 
@@ -19,6 +22,35 @@ export function PerformanceBoard({ workstream }: { workstream: Workstream | null
         </div>
         <span className="bx-chip" style={{ color: "var(--bx-accent-2)" }}>LIVE</span>
       </div>
+
+      {strategy && (
+        <div style={{ marginTop: 12, padding: 10, borderRadius: 14, background: "linear-gradient(135deg, rgba(91,140,255,0.12), rgba(33,212,168,0.07))", border: "1px solid rgba(91,140,255,0.22)" }}>
+          <div style={{ fontSize: 10, color: "var(--bx-accent)", fontWeight: 900, letterSpacing: "0.12em" }}>OPS STRATEGY</div>
+          <div style={{ fontSize: 12.5, color: "var(--bx-text)", fontWeight: 800, marginTop: 4 }}>{strategy.headline}</div>
+          <div style={{ fontSize: 10.5, color: "var(--bx-muted)", lineHeight: 1.45, marginTop: 3 }}>{strategy.principle}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}>
+            {(strategyLanes.length ? strategyLanes : strategy.laneHealth.slice(0, 2)).map((lane) => (
+              <div key={lane.lane} style={{ padding: 8, borderRadius: 11, background: "rgba(8,12,24,0.34)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 850 }}>{lane.label}</span>
+                  <span style={{ fontSize: 9.5, color: healthColor(lane.health), fontWeight: 900 }}>{healthLabel(lane.health)}</span>
+                </div>
+                <div style={{ fontSize: 9.5, color: "var(--bx-muted)", marginTop: 3 }}>{lane.capacityLabel}</div>
+                <div style={{ fontSize: 10, color: "var(--bx-text)", marginTop: 5, lineHeight: 1.35 }}>{lane.nextAction}</div>
+              </div>
+            ))}
+          </div>
+          {milestones.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+              {milestones.map((m) => (
+                <span key={m.id} className="bx-chip" title={m.meaning} style={{ color: m.status === "done" ? "var(--bx-accent-2)" : "var(--bx-text)" }}>
+                  {m.status === "done" ? "✓" : "○"} {m.label} {m.done}/{m.total}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 7, marginTop: 12 }}>
         {indices.map((idx) => (
@@ -49,6 +81,18 @@ export function PerformanceBoard({ workstream }: { workstream: Workstream | null
       )}
     </div>
   );
+}
+
+function healthLabel(health: "healthy" | "watch" | "gap") {
+  if (health === "gap") return "GAP";
+  if (health === "watch") return "WATCH";
+  return "READY";
+}
+
+function healthColor(health: "healthy" | "watch" | "gap") {
+  if (health === "gap") return "var(--bx-warn)";
+  if (health === "watch") return "var(--bx-accent)";
+  return "var(--bx-accent-2)";
 }
 
 function AgentRow({ performer }: { performer: AgentPerformance }) {

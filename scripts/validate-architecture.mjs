@@ -29,17 +29,17 @@ const contract = JSON.parse(await read("docs/contracts/agent-messenger-contract.
 check("contract version", contract.version === "0.1.0", contract.version);
 const commandTypes = new Set(contract.commands.map((c) => c.type));
 const eventTypes = new Set(contract.events.map((e) => e.type));
-for (const type of ["user.message.ingest", "agent.run.enqueue", "office.message.post"]) {
+for (const type of ["user.message.ingest", "agent.run.enqueue", "agent.run.cancel", "office.message.post"]) {
   check(`contract command ${type}`, commandTypes.has(type));
 }
-for (const type of ["user.message.received", "agent.run.queued", "agent.run.started", "agent.run.completed", "approval.requested"]) {
+for (const type of ["user.message.received", "agent.run.queued", "agent.run.started", "agent.run.completed", "agent.run.cancelled", "approval.requested"]) {
   check(`contract event ${type}`, eventTypes.has(type));
 }
 check("messenger adapter methods", contract.adapters?.messengerOfficeAdapter?.inbound?.includes("verifyWebhook"));
 check("runtime adapter methods", contract.adapters?.agentRuntimeAdapter?.methods?.includes("enqueue"));
 
 const contractsSrc = await read("packages/contracts/src/index.mjs");
-for (const type of ["user.message.ingest", "agent.run.enqueue", "office.message.post", "agent.run.queued", "agent.run.started", "agent.run.completed"]) {
+for (const type of ["user.message.ingest", "agent.run.enqueue", "agent.run.cancel", "office.message.post", "agent.run.queued", "agent.run.started", "agent.run.completed", "agent.run.cancelled"]) {
   check(`contracts exports ${type}`, contractsSrc.includes(type));
 }
 

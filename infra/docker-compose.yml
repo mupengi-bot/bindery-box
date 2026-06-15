@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bindery-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${BINDERY_POSTGRES_USER:-bindery}
+      POSTGRES_PASSWORD: ${BINDERY_POSTGRES_PASSWORD:-bindery_dev_password}
+      POSTGRES_DB: postgres
+    ports:
+      - "${BINDERY_POSTGRES_PORT:-54329}:5432"
+    volumes:
+      - bindery-postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BINDERY_POSTGRES_USER:-bindery} -d bindery"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mattermost:
+    image: mattermost/mattermost-team-edition:9.11
+    container_name: bindery-mattermost
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MM_SERVICESETTINGS_SITEURL: ${BINDERY_PUBLIC_OFFICE_URL:-http://localhost:8065}
+      MM_SERVICESETTINGS_LISTENADDRESS: ":8065"
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: "${BINDERY_MATTERMOST_DATABASE_URL}"
+      MM_TEAMSETTINGS_SITENAME: ${BINDERY_OFFICE_SITE_NAME:-BINDERY Human Office}
+      MM_LOGSETTINGS_ENABLECONSOLE: "true"
+      MM_PLUGINSETTINGS_ENABLEUPLOADS: "false"
+    ports:
+      - "${BINDERY_MATTERMOST_PORT:-8065}:8065"
+    volumes:
+      - bindery-mattermost-config:/mattermost/config
+      - bindery-mattermost-data:/mattermost/data
+      - bindery-mattermost-logs:/mattermost/logs
+      - bindery-mattermost-plugins:/mattermost/plugins
+      - bindery-mattermost-client-plugins:/mattermost/client/plugins
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8065/api/v4/system/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+  bindery-web:
+    image: node:20-alpine
+    container_name: bindery-web
+    restart: unless-stopped
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mattermost:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      BINDERY_PUBLIC_URL: ${BINDERY_PUBLIC_URL:-http://localhost:3000}
+      BINDERY_PUBLIC_OFFICE_URL: ${BINDERY_PUBLIC_OFFICE_URL:-http://localhost:8065}
+      BINDERY_DATABASE_URL: "${BINDERY_DATABASE_URL}"
+      BINDERY_STATE_TABLE: bindery_state
+      BINDERY_WORKSPACE_ID: default
+      BINDERY_SESSION_SECRET: ${BINDERY_SESSION_SECRET:-local-dev-change-me}
+      BINDERY_OWNER_EMAIL: ${BINDERY_OWNER_EMAIL:-owner@bindery.local}
+      BINDERY_OWNER_PASSWORD: ${BINDERY_OWNER_PASSWORD:-bindery-local-admin}
+      BINDERY_MATTERMOST_URL: ${BINDERY_PUBLIC_OFFICE_URL:-http://localhost:8065}
+      BINDERY_MATTERMOST_MODE: ${BINDERY_MATTERMOST_MODE:-mock}
+    ports:
+      - "${BINDERY_WEB_PORT:-3000}:3000"
+    volumes:
+      - ..:/app
+      - bindery-node-modules:/app/node_modules
+    command: sh -lc "npm install && npm run build && npm run start"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  bindery-postgres-data:
+  bindery-mattermost-config:
+  bindery-mattermost-data:
+  bindery-mattermost-logs:
+  bindery-mattermost-plugins:
+  bindery-mattermost-client-plugins:
+  bindery-node-modules:

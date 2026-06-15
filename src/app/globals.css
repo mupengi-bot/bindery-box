@@ -1,6 +1,23 @@
 @import "tailwindcss";
 
-:root {
+:root,
+[data-bx-theme="comfort"] {
+  color-scheme: light;
+  --bx-bg: #f5f2ea;
+  --bx-bg-soft: #ebe6dc;
+  --bx-panel: rgba(255, 252, 245, 0.84);
+  --bx-border: rgba(74, 63, 48, 0.14);
+  --bx-text: #1f2933;
+  --bx-muted: #667085;
+  --bx-accent: #2563eb;
+  --bx-accent-2: #059669;
+  --bx-warn: #d97706;
+  --bx-danger: #dc2626;
+  --bx-shadow: rgba(56, 46, 34, 0.14);
+}
+
+[data-bx-theme="night"] {
+  color-scheme: dark;
   --bx-bg: #070b16;
   --bx-bg-soft: #0d1326;
   --bx-panel: rgba(15, 21, 40, 0.82);
@@ -11,6 +28,7 @@
   --bx-accent-2: #21d4a8;
   --bx-warn: #f5a524;
   --bx-danger: #ff5d73;
+  --bx-shadow: rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -24,7 +42,7 @@ body {
   height: 100%;
   background: var(--bx-bg);
   color: var(--bx-text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+  font-family: Pretendard, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
@@ -40,7 +58,7 @@ body > div {
   border: 1px solid var(--bx-border);
   border-radius: 16px;
   backdrop-filter: blur(14px);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 50px var(--bx-shadow);
 }
 
 .bx-chip {

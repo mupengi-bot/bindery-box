@@ -341,7 +341,7 @@ function handleTaskPlanPreview(state, command) {
 // a real queued task, routes it to a lane colleague, and (optionally) enqueues a
 // run intent. The task then surfaces as a runnable mission in the workstream
 // projection, so the operator can run/enqueue it like any seeded mission.
-function handleTaskCreate(state, command) {
+function handleTaskCreate(state, command, policy) {
   const c = createCollector(state);
   const lane = OFFICE_LANES.includes(command.lane) ? command.lane : "control";
   const agent = routeAgentForLane(state, lane);
@@ -373,12 +373,34 @@ function handleTaskCreate(state, command) {
       message: `${lane} 구역 업무 요청 생성: ${title}${agent ? ` → ${agent.name}` : ""}` });
 
   // Optional enqueue intent — records that the work is queued for the routed
-  // agent without auto-running it (operator keeps the human-in-the-loop run).
+  // agent. If `execute` is true (Goal Composer's "계획대로 실행" button), this
+  // immediately crosses the runtime boundary too: policy is evaluated, a real
+  // orchestrator run is created, live-log/workstream events are emitted, and the
+  // run either creates an artifact or waits at Human Gate.
   if (command.enqueue && agent) {
     c.emit(EventType.agentRunQueued,
       { taskId: task.id, agentId: agent.id, goal: title, requestedBy: command.requestedBy },
       { actorType: "human", actor: command.requestedBy ?? "operator", target: task.id,
         message: `${agent.name} 실행 큐에 추가됨` });
+  }
+
+  if (command.execute && agent) {
+    const runOutcome = handleAgentRunEnqueue(state, {
+      type: CommandType.agentRunEnqueue,
+      workspaceId: task.workspaceId,
+      taskId: task.id,
+      agentId: agent.id,
+      requestedBy: command.requestedBy ?? "operator",
+      goal: title,
+      externalRef: command.externalRef
+    }, policy);
+    c.events.push(...runOutcome.events);
+    return {
+      ok: runOutcome.ok,
+      decision: runOutcome.decision,
+      events: c.events,
+      result: { task, agent, planExecution: runOutcome.result }
+    };
   }
 
   return { ok: true, decision: "created", events: c.events, result: { task, agent } };
@@ -501,12 +523,21 @@ function handleAgentRunEnqueue(state, command, policy) {
       requestedByAgentId: agent.id, reason: verdict.reason, summary: "Paperclip/GitHub/Mattermost 경계 실행 전 사람 승인이 필요합니다."
     });
     state.approvals.unshift(approval);
+    const artifact = {
+      id: makeId("artifact"), workspaceId, type: "approval-packet", title: `${task.title} 승인 패킷`,
+      contentRef: `artifact://${task.id}/approval-packet`, sourceRunId: orchestratorRun.id, visibleInOffice: true,
+      createdAt: nowIso(), summary: `${agent.name}가 실행 전 승인 근거, 위험 경계, 예상 산출물을 정리했습니다.`
+    };
+    state.artifacts.unshift(artifact);
+    task.artifactRefs = [...(task.artifactRefs ?? []), artifact.id];
+    task.output = `${approval.summary} 산출물: ${artifact.title}`;
     task.status = TaskStatus.waitingApproval;
     orchestratorRun.approvalId = approval.id;
+    orchestratorRun.artifactId = artifact.id;
     c.emit(EventType.approvalRequested,
-      { approvalId: approval.id, workspaceId, taskRunId: orchestratorRun.id, reason: verdict.reason },
+      { approvalId: approval.id, workspaceId, taskRunId: orchestratorRun.id, reason: verdict.reason, artifactId: artifact.id },
       { actorType: "agent", actor: agent.name, target: approval.id, message: `${task.title} 실행 승인 요청 생성` });
-    return { ok: true, decision: verdict.decision, events: c.events, result: { task, agent, orchestratorRun, approval } };
+    return { ok: true, decision: verdict.decision, events: c.events, result: { task, agent, orchestratorRun, approval, artifact } };
   }
 
   agent.status = AgentStatus.running;
@@ -538,6 +569,39 @@ function handleAgentRunEnqueue(state, command, policy) {
     { taskRunId: orchestratorRun.id, taskId: task.id, resultSummary },
     { actorType: "agent", actor: agent.name, target: task.id, message: resultSummary });
   return { ok: true, decision: verdict.decision, events: c.events, result: { task, agent, orchestratorRun, artifact } };
+}
+
+function handleAgentRunCancel(state, command) {
+  const c = createCollector(state);
+  ensureCollections(state);
+  const run = (state.orchestratorRuns ?? []).find((r) => r.id === command.runId);
+  if (!run) throw new Error(`Runtime run not found: ${command.runId}`);
+  const cancellable = !["completed", "failed", "cancelled"].includes(run.status);
+  if (!cancellable) {
+    c.emit(EventType.toolCallBlocked,
+      { orchestratorRunId: run.id, reason: `run already ${run.status}` },
+      { actorType: "system", actor: "runtime", target: run.id, message: `실행 취소 불가: 이미 ${run.status}` });
+    return { ok: false, decision: "not_cancelled", events: c.events, result: { orchestratorRun: run } };
+  }
+
+  const task = (state.tasks ?? []).find((t) => t.id === run.taskId);
+  const agent = (state.agents ?? []).find((a) => a.id === run.agentId);
+  run.status = "cancelled";
+  run.cancelledAt = nowIso();
+  run.cancelledBy = command.requestedBy;
+  run.cancelReason = command.reason;
+  if (task && task.status !== TaskStatus.completed) {
+    task.status = TaskStatus.failed;
+    task.output = `실행 취소됨: ${command.reason}`;
+  }
+  if (agent && agent.status === AgentStatus.running) agent.status = AgentStatus.idle;
+
+  c.emit(EventType.agentRunCancelled,
+    { workspaceId: run.workspaceId, taskId: run.taskId, agentId: run.agentId, orchestratorRunId: run.id, reason: command.reason, requestedBy: command.requestedBy },
+    { actorType: "human", actor: command.requestedBy, target: run.id, message: `런타임 실행 취소: ${command.reason}` });
+  c.emit(EventType.taskRunFailed,
+    { taskRunId: run.id, taskId: run.taskId, error: "runtime_run_cancelled" });
+  return { ok: true, decision: "cancelled", events: c.events, result: { task, agent, orchestratorRun: run } };
 }
 
 // agent.move.requested lifecycle. Movement is persisted as a real command/event
@@ -606,6 +670,9 @@ export function dispatch(state, command, options = {}) {
     case CommandType.agentRunEnqueue:
       outcome = handleAgentRunEnqueue(state, command, policy);
       break;
+    case CommandType.agentRunCancel:
+      outcome = handleAgentRunCancel(state, command);
+      break;
     case CommandType.officeMessagePost:
       outcome = handleOfficeMessagePost(state, command);
       break;
@@ -619,7 +686,7 @@ export function dispatch(state, command, options = {}) {
       outcome = handleAgentCreate(state, command);
       break;
     case CommandType.taskCreate:
-      outcome = handleTaskCreate(state, command);
+      outcome = handleTaskCreate(state, command, policy);
       break;
     case CommandType.agentMoveRequest:
       outcome = handleAgentMove(state, command, policy);
@@ -680,6 +747,29 @@ export function projectOverview(state, workspaceId) {
   };
 }
 
+export function projectAccessTopology(state, workspaceId) {
+  const wsId = workspaceId === "default" ? (state.workspace?.id ?? "ws_default") : workspaceId;
+  const inWs = (item) => !item.workspaceId || item.workspaceId === wsId;
+  const users = (state.humanUsers ?? []).filter(inWs);
+  const hardwareNodes = (state.hardwareNodes ?? []).filter(inWs);
+  const routes = (state.accessRoutes ?? []).filter(inWs);
+  return {
+    workspaceId: wsId,
+    tenantId: state.tenant?.id ?? null,
+    generatedAt: nowIso(),
+    users,
+    hardwareNodes,
+    routes,
+    summary: {
+      users: users.length,
+      hardwareNodes: hardwareNodes.length,
+      readyRoutes: routes.filter((r) => r.status === "ready").length,
+      surfaces: Array.from(new Set(routes.map((r) => r.surface))).sort(),
+    },
+    invariant: "user -> role/session -> workspace -> hardware route -> control plane -> runtime/office projection",
+  };
+}
+
 // --- live operations log projection -----------------------------------------
 //
 // Live Operations Log: a time-ordered merge of the four activity planes so the
@@ -702,6 +792,7 @@ const LIVE_EVENT_META = Object.freeze({
   "agent.stream.delta": { level: "running", label: "에이전트 스트림" },
   "agent.run.completed": { level: "success", label: "에이전트 실행 완료" },
   "agent.run.failed": { level: "error", label: "에이전트 실행 실패" },
+  "agent.run.cancelled": { level: "error", label: "에이전트 실행 취소" },
   "task.run.started": { level: "running", label: "업무 실행 시작" },
   "task.run.completed": { level: "success", label: "업무 완료" },
   "task.run.failed": { level: "error", label: "업무 실패" },
@@ -832,9 +923,8 @@ export function projectLiveLog(state, workspaceId, { limit = 80 } = {}) {
 //
 // projectWorkstream turns raw platform state into a human-facing "company
 // operations" view: a narrative stream of agent work + report beats, mission
-// cards with progress, gamified KPIs (company health / automation level /
-// agent energy), daily objectives, achievement badges, incident & approval
-// alerts, and topology/lane maps. It is a PURE derivation of state — the same
+// cards with progress, company health / automation level / staffing guidance,
+// daily objectives, incident & approval alerts, and topology/lane maps. It is a PURE derivation of state — the same
 // state always yields the same projection (no Date.now/Math.random), so it is
 // safe in the stateless cloud demo. The raw /live-log stays available for the
 // technical drawer; this is what the simulator cockpit renders on the surface.
@@ -847,6 +937,41 @@ const WORKSTREAM_LANES = Object.freeze([
   { id: "operations", label: "Operations", category: "operations", glyph: "◆", roleHint: /운영|ops|operation|support|incident|mattermost/i, reward: "응답 시간 ↓" },
   { id: "control", label: "Control", category: "control", glyph: "◈", roleHint: /승인|감사|governance|control/i, reward: "감사 추적 100%" }
 ]);
+
+const LANE_STAFFING_PLAYBOOK = Object.freeze({
+  engineering: {
+    role: "Engineering QA Operator",
+    name: "QA Flow Operator",
+    skillGap: "테스트/PR 검증 루프",
+    firstMission: "최근 GitHub PR 실패 원인 triage 후 수정 계획 제출",
+    governanceNote: "코드 변경은 PR/리뷰 승인 후 실행하도록 시작하세요.",
+    capabilities: ["github.issue.triage", "github.pr.review", "artifact.report.write"],
+  },
+  legal: {
+    role: "Legal Risk Reviewer",
+    name: "Contract Gate Reviewer",
+    skillGap: "외부 발송 전 조항/정책 검토",
+    firstMission: "신규 계약서의 위험 조항과 승인 필요 항목 정리",
+    governanceNote: "법무/고객 영향 작업은 Human Gate를 기본값으로 둡니다.",
+    capabilities: ["document.review", "approval.request", "artifact.report.write"],
+  },
+  operations: {
+    role: "Ops Triage Coordinator",
+    name: "Mattermost Ops Triage",
+    skillGap: "스레드 인입/인시던트 라우팅",
+    firstMission: "Mattermost 인입 스레드를 업무 카드로 분류하고 담당자 추천",
+    governanceNote: "고객/운영 채널 게시 전에는 초안 검토 단계를 유지하세요.",
+    capabilities: ["mattermost.thread.ingest", "runbook.summarize", "office.message.draft"],
+  },
+  control: {
+    role: "Governance Operator",
+    name: "Approval Control Operator",
+    skillGap: "승인/감사/권한 최소화",
+    firstMission: "대기 중인 승인 요청을 위험도별로 정렬하고 근거 패킷 작성",
+    governanceNote: "권한 부여보다 승인·감사 로그 완성을 먼저 보상합니다.",
+    capabilities: ["approval.route", "audit.review", "policy.check"],
+  },
+});
 
 function laneForCategory(category) {
   return WORKSTREAM_LANES.find((l) => l.id === category) ?? WORKSTREAM_LANES[3];
@@ -909,7 +1034,7 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
   const blockedAgents = agents.filter((a) => a.status === AgentStatus.blocked).length;
   const runningTasks = tasks.filter((t) => t.status === TaskStatus.running).length;
 
-  // --- gamified company vitals ---
+  // --- company vitals --------------------------------------------------------
   const healthDelta = completed * 6 - failed * 11 - pendingApprovals * 4 - blockedAgents * 7;
   const healthScore = clamp(Math.round(64 + healthDelta), 5, 100);
   const automationLevel = clamp(Math.round((completed / totalTasks) * 100), 0, 100);
@@ -1024,15 +1149,9 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
       title: `${a.name} 정책 차단`, message: "권한 부족으로 실행이 차단됨.", agentId: a.id });
   }
 
-  // --- achievement badges (unlock-style) ---
-  const anyApproved = approvals.some((a) => a.status === ApprovalStatus.approved);
-  const achievements = [
-    { id: "first_run", icon: "⚡", label: "First Dispatch", desc: "첫 미션 실행", unlocked: taskRuns.length > 0 },
-    { id: "approval_cleared", icon: "✓", label: "Cleared Gate", desc: "승인 게이트 통과", unlocked: anyApproved },
-    { id: "zero_incident", icon: "❖", label: "Zero Incident", desc: "실패 0건 유지", unlocked: failed === 0 && taskRuns.length > 0 },
-    { id: "thread_ingested", icon: "✉", label: "Thread Ingested", desc: "채팅 요청 업무화", unlocked: (state.threads ?? []).length > 0 },
-    { id: "full_auto", icon: "★", label: "Full Automation", desc: "모든 미션 완료", unlocked: completed >= tasks.length && tasks.length > 0 }
-  ];
+  // --- sober progress markers ------------------------------------------------
+  // Operational objectives stay as sober progress markers; avoid childish badges
+  // or reward loops on the core surface.
 
   // --- narrative operations stream (human-readable beats) ---
   const beats = [];
@@ -1187,6 +1306,123 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
   // 관심 에이전트 TOP 10 (watchlist) — flagged + score-ranked.
   const watchlist = agentPerformance.filter((p) => p.watch).slice(0, 10);
 
+  // --- agent operations strategy --------------------------------------------
+  // This is not a points/badges treadmill. It turns staffing, placement,
+  // governance and small wins into actionable operating guidance for the 3D
+  // office while keeping Mission Control as the detailed backstage.
+  const laneHealth = lanes.map((lane) => {
+    const laneAgents = agentCards.filter((a) => a.lane === lane.id);
+    const laneMissions = missions.filter((mm) => mm.lane === lane.id);
+    const active = laneMissions.filter((mm) => mm.status === "running" || mm.status === "waiting_approval").length;
+    const blocked = laneAgents.filter((a) => a.status === "blocked").length;
+    const playbook = LANE_STAFFING_PLAYBOOK[lane.id];
+    const health = blocked || (laneMissions.length > laneAgents.length * 2) ? "gap" : active || lane.load > 55 ? "watch" : "healthy";
+    return {
+      lane: lane.id,
+      label: lane.label,
+      agentCount: laneAgents.length,
+      missionCount: laneMissions.length,
+      load: lane.load,
+      health,
+      capacityLabel: `${laneAgents.length}명 · ${laneMissions.length}개 미션 · 부하 ${lane.load}%`,
+      skillGap: health === "healthy" ? "핵심 루프 정상" : playbook.skillGap,
+      recommendedHireRole: playbook.role,
+      nextAction: health === "gap"
+        ? `${playbook.role} 보강 또는 승인/권한 병목 해소`
+        : health === "watch"
+          ? `${lane.label} 미션을 Flow로 고정하고 Human Gate를 확인`
+          : `${lane.label} 운영 루틴을 검증된 템플릿으로 저장`,
+    };
+  });
+  const recommendedHires = laneHealth
+    .filter((lane) => lane.health !== "healthy")
+    .slice(0, 2)
+    .map((lane) => {
+      const playbook = LANE_STAFFING_PLAYBOOK[lane.lane];
+      return {
+        id: `hire_${lane.lane}`,
+        lane: lane.lane,
+        laneLabel: lane.label,
+        role: playbook.role,
+        name: playbook.name,
+        reason: `${lane.label} ${lane.capacityLabel} — ${lane.skillGap} 보강 필요`,
+        firstMission: playbook.firstMission,
+        governanceNote: playbook.governanceNote,
+        capabilities: playbook.capabilities,
+      };
+    });
+  if (recommendedHires.length === 0) {
+    const nextLane = laneHealth.slice().sort((a, b) => b.missionCount - a.missionCount || b.load - a.load)[0];
+    const playbook = LANE_STAFFING_PLAYBOOK[nextLane?.lane ?? "control"];
+    recommendedHires.push({
+      id: `hire_${nextLane?.lane ?? "control"}_scale`,
+      lane: nextLane?.lane ?? "control",
+      laneLabel: nextLane?.label ?? "Control",
+      role: playbook.role,
+      name: playbook.name,
+      reason: "현재 조직은 안정권입니다. 다음 단계는 검증된 운영 루틴을 맡길 보조 운영자입니다.",
+      firstMission: playbook.firstMission,
+      governanceNote: playbook.governanceNote,
+      capabilities: playbook.capabilities,
+    });
+  }
+  const operatingMilestones = [
+    {
+      id: "mission_card_loop",
+      label: "Mission Card Loop",
+      done: Math.min(missions.length, 3),
+      total: 3,
+      meaning: "업무를 채팅이 아니라 추적 가능한 카드로 맡기는 루프",
+      unlocks: "에이전트별 첫 미션 추천",
+    },
+    {
+      id: "human_gate",
+      label: "Human Gate Governed",
+      done: approvals.length ? Math.min(approvals.filter((a) => a.status !== ApprovalStatus.pending).length, 1) : 0,
+      total: 1,
+      meaning: "외부 영향 작업을 승인·감사 가능한 구조로 운영",
+      unlocks: "승인 기반 자동 실행",
+    },
+    {
+      id: "visible_artifacts",
+      label: "Visible Artifacts",
+      done: Math.min((state.artifacts ?? []).filter((a) => !a.workspaceId || a.workspaceId === wsId).length, 1),
+      total: 1,
+      meaning: "결과물이 3D 오피스와 Mission Control에 남는 구조",
+      unlocks: "성과/근거 기반 코칭",
+    },
+  ].map((item) => ({
+    ...item,
+    status: item.done >= item.total ? "done" : item.done > 0 ? "progress" : "open",
+  }));
+  const coachingHints = [
+    ...laneHealth.filter((lane) => lane.health === "gap").slice(0, 2).map((lane) => ({
+      id: `coach_${lane.lane}_gap`,
+      severity: "warn",
+      lane: lane.lane,
+      title: `${lane.label} 배치 보강 필요`,
+      action: lane.nextAction,
+    })),
+    ...agentPerformance.filter((p) => p.status === "blocked" || p.humanRatio > 55).slice(0, 2).map((p) => ({
+      id: `coach_${p.id}`,
+      severity: p.status === "blocked" ? "high" : "info",
+      agentId: p.id,
+      lane: p.lane,
+      title: p.status === "blocked" ? `${p.name} 권한/정책 차단` : `${p.name} 사람 개입 비율 높음`,
+      action: p.status === "blocked" ? "권한을 늘리기보다 승인 경계와 필요한 capability를 먼저 확인" : "반복 단계는 Flow로 고정하고 예외만 Human Gate로 라우팅",
+    })),
+  ];
+  const agentOpsStrategy = {
+    headline: recommendedHires[0]
+      ? `${recommendedHires[0].laneLabel}에 ${recommendedHires[0].role} 배치 추천`
+      : "현재 조직은 안정권 — 다음 운영 루틴을 설계하세요",
+    principle: "포인트 경쟁이 아니라 의미 있는 진전, 권한 통제, 작은 승리를 보상합니다.",
+    laneHealth,
+    recommendedHires,
+    operatingMilestones,
+    coachingHints,
+  };
+
   return {
     workspaceId: wsId,
     generatedAt: nowIso(),
@@ -1208,7 +1444,7 @@ export function projectWorkstream(state, workspaceId, { streamLimit = 40 } = {})
         { id: "completed", label: "Done", count: completed }
       ]
     },
-    objectives, alerts, achievements, stream,
+    objectives, alerts, agentOpsStrategy, stream,
     agentPerformance,
     market: { status: marketStatus, asOf: nowIso(), indices: marketIndices, categories },
     watchlist,

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bindery.local/contracts/local-device-contract.json",
+  "title": "BINDERY BOX Desktop Local Device Contract",
+  "type": "object",
+  "required": ["schemaVersion", "manifest", "policy"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "manifest": {
+      "type": "object",
+      "required": ["product", "mode", "invariant", "defaultSurface", "runtime", "shell"],
+      "properties": {
+        "product": { "const": "BINDERY BOX Desktop" },
+        "mode": { "const": "desktop-local-device" },
+        "invariant": { "type": "string", "minLength": 20 },
+        "defaultSurface": { "const": "desktop-workbench" },
+        "runtime": {
+          "type": "object",
+          "required": ["host", "runLocation", "approvalMode", "supportedAccess"],
+          "properties": {
+            "host": { "const": "local-device" },
+            "runLocation": { "const": "this-computer" },
+            "approvalMode": { "const": "human-gate-before-external-effects" },
+            "supportedAccess": {
+              "type": "array",
+              "contains": { "const": "workspace-files" }
+            }
+          }
+        },
+        "shell": {
+          "type": "object",
+          "required": ["target", "primaryViews"],
+          "properties": {
+            "target": { "const": "native-desktop-shell" },
+            "primaryViews": {
+              "type": "array",
+              "contains": { "const": "approvals" }
+            }
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "required": ["workspaceId", "scopes", "defaults"],
+      "properties": {
+        "workspaceId": { "type": "string" },
+        "scopes": {
+          "type": "array",
+          "contains": {
+            "type": "object",
+            "required": ["id", "label", "access", "status"],
+            "properties": {
+              "id": { "const": "workspace-files" },
+              "label": { "type": "string" },
+              "access": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          }
+        },
+        "defaults": {
+          "type": "object",
+          "required": ["dataLeavesDevice", "externalSendRequiresApproval", "rawSecretsVisibleToUi", "rawLocalPathsInPublicLogs"],
+          "properties": {
+            "dataLeavesDevice": { "const": false },
+            "externalSendRequiresApproval": { "const": true },
+            "rawSecretsVisibleToUi": { "const": false },
+            "rawLocalPathsInPublicLogs": { "const": false }
+          }
+        }
+      }
+    }
+  }
+}

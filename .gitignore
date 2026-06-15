@@ -20,6 +20,8 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.local-stack.example
+!.env.native.example
 
 # deploy / local agent state
 .vercel/

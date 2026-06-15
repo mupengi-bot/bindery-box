@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import type { Connector, GoldenImage, GoldenPlane, KnowledgeResult, Workstream } from "../types";
+import type { Artifact, Connector, GoldenImage, GoldenPlane, KnowledgeResult, OfficeThread, OrchestrationBoundary, OrchestratorRun, Workstream } from "../types";
+import { RUN_STATUS_LABEL, runStatusColor } from "../scene/projection";
 import { Bar, levelColor } from "./ui";
 
-export type SheetId = "missions" | "golden" | "connectors" | "knowledge" | "approvals" | null;
+export type SheetId = "missions" | "orchestration" | "golden" | "connectors" | "knowledge" | "approvals" | null;
 
 export const SHEET_TABS: { id: Exclude<SheetId, null>; label: string; glyph: string }[] = [
   { id: "missions", label: "미션 보드", glyph: "▤" },
+  { id: "orchestration", label: "오케스트레이션", glyph: "⟳" },
   { id: "golden", label: "골든 이미지", glyph: "◉" },
   { id: "connectors", label: "커넥터 허브", glyph: "⧉" },
   { id: "knowledge", label: "지식 그래프", glyph: "❖" },
@@ -23,6 +25,10 @@ export function Sheets({
   workstream,
   connectors,
   goldenImage,
+  threads,
+  orchestratorRuns,
+  orchestrationAdapters,
+  artifacts,
   onRun,
   onDecide,
   searchKnowledge,
@@ -33,6 +39,10 @@ export function Sheets({
   workstream: Workstream | null;
   connectors: Connector[];
   goldenImage: GoldenImage | null;
+  threads: OfficeThread[];
+  orchestratorRuns: OrchestratorRun[];
+  orchestrationAdapters: OrchestrationBoundary["adapters"];
+  artifacts: Artifact[];
   onRun: (taskId: string) => void;
   onDecide: (approvalId: string, decision: "approved" | "rejected") => void;
   searchKnowledge: (q: string) => Promise<KnowledgeResult[]>;
@@ -67,6 +77,7 @@ export function Sheets({
         </div>
 
         {sheet === "missions" && <MissionsView workstream={workstream} onRun={onRun} busy={busy} />}
+        {sheet === "orchestration" && <OrchestrationView threads={threads} runs={orchestratorRuns} adapters={orchestrationAdapters} artifacts={artifacts} />}
         {sheet === "golden" && <GoldenImageView goldenImage={goldenImage} />}
         {sheet === "connectors" && <ConnectorsView connectors={connectors} />}
         {sheet === "knowledge" && <KnowledgeView searchKnowledge={searchKnowledge} />}
@@ -108,6 +119,91 @@ function MissionsView({ workstream, onRun, busy }: { workstream: Workstream | nu
             {m.summary && <div style={{ fontSize: 11, color: "var(--bx-muted)", marginTop: 8, lineHeight: 1.4 }}>{m.summary}</div>}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// Synced orchestration boundary: Mattermost threads, orchestration runs and
+// produced artifacts — the same data projected as signals in the 3D office.
+function OrchestrationView({ threads, runs, adapters, artifacts }: { threads: OfficeThread[]; runs: OrchestratorRun[]; adapters: OrchestrationBoundary["adapters"]; artifacts: Artifact[] }) {
+  const counts = [
+    { label: "스레드", value: threads.length },
+    { label: "실행", value: runs.length },
+    { label: "산출물", value: artifacts.length },
+  ];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        {counts.map((c) => (
+          <div key={c.label} className="bx-panel" style={{ flex: 1, padding: "8px 6px", textAlign: "center", borderRadius: 10 }}>
+            <div style={{ fontSize: 20, fontWeight: 900 }}>{c.value}</div>
+            <div style={{ fontSize: 9.5, color: "var(--bx-muted)" }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {adapters.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {adapters.map((a) => (
+            <span key={a.id} className="bx-chip" style={{ color: "#9fb0d8" }} title={a.purpose}>{a.id} · {a.status}</span>
+          ))}
+        </div>
+      )}
+
+      <div>
+        <SectionTitle>Orchestration runs</SectionTitle>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {runs.length === 0 && <Empty>실행 중인 오케스트레이션이 없습니다.</Empty>}
+          {runs.map((r) => {
+            const color = runStatusColor(String(r.status));
+            return (
+              <div key={r.id} className="bx-panel" style={{ padding: 12, borderRadius: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: color }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>{r.goal ?? r.taskId ?? r.id}</span>
+                  <span className="bx-chip" style={{ color }}>{RUN_STATUS_LABEL[String(r.status)] ?? r.status}</span>
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--bx-muted)", marginTop: 6 }}>
+                  {r.provider}{Array.isArray(r.adapters) && r.adapters.length > 0 ? ` · ${r.adapters.join(", ")}` : ""}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Office threads</SectionTitle>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {threads.length === 0 && <Empty>인입된 스레드가 없습니다.</Empty>}
+          {threads.map((t) => (
+            <div key={t.id} className="bx-panel" style={{ padding: 12, borderRadius: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>{t.channelRef}</span>
+                <span className="bx-chip" style={{ color: "var(--bx-muted)" }}>{t.provider}</span>
+              </div>
+              {t.lastMessage && <div style={{ fontSize: 11, color: "var(--bx-muted)", marginTop: 6, lineHeight: 1.4 }}>{t.lastMessage}</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Artifacts</SectionTitle>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {artifacts.length === 0 && <Empty>생성된 산출물이 없습니다.</Empty>}
+          {artifacts.map((a) => (
+            <div key={a.id} className="bx-panel" style={{ padding: 12, borderRadius: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, flex: 1 }}>{a.title}</span>
+                {a.visibleInOffice && <span className="bx-chip" style={{ color: "#21d4a8" }}>office</span>}
+                <span className="bx-chip" style={{ color: "var(--bx-muted)" }}>{a.type}</span>
+              </div>
+              {a.summary && <div style={{ fontSize: 11, color: "var(--bx-muted)", marginTop: 6, lineHeight: 1.4 }}>{a.summary}</div>}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

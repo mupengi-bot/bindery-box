@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { LANE_ZONES } from "../scene/sceneConfig";
-import type { LaneId, Mission, PlanPreview, RoleTemplate, WorkstreamAgent } from "../types";
+import type { AgentOpsStrategy, LaneId, Mission, PlanPreview, RoleTemplate, WorkstreamAgent } from "../types";
 import { levelColor } from "./ui";
 import { PlanPreviewPanel } from "./PlanPreviewPanel";
 
@@ -19,6 +19,7 @@ export function GoalComposer({
   missions,
   agents,
   roleTemplates,
+  agentOpsStrategy,
   initialLane = "all",
   openNonce = 0,
   onRun,
@@ -31,10 +32,11 @@ export function GoalComposer({
   missions: Mission[];
   agents: WorkstreamAgent[];
   roleTemplates: RoleTemplate[];
+  agentOpsStrategy?: AgentOpsStrategy | null;
   initialLane?: LaneId | "all";
   openNonce?: number;
   onRun: (taskId: string) => void;
-  onCreateTask: (input: { title: string; lane: string; priority?: string; requiresApproval?: boolean; expectedOutput?: string; enqueue?: boolean }) => Promise<void>;
+  onCreateTask: (input: { title: string; lane: string; priority?: string; requiresApproval?: boolean; expectedOutput?: string; enqueue?: boolean; execute?: boolean }) => Promise<void>;
   onPreviewPlan: (input: { title: string; lane: string; priority?: string; requiresApproval?: boolean; expectedOutput?: string; enqueue?: boolean }) => Promise<PlanPreview>;
   onCreateAgent: (input: { name: string; role: string; lane: string; templateId?: string; persona?: string; prompt?: string; capabilities?: string[]; kpi?: string }) => Promise<void>;
   onReseed: () => void;
@@ -68,6 +70,8 @@ export function GoalComposer({
   const selectedTemplate = roleTemplates.find((t) => t.id === selectedTemplateId) ?? null;
   const inferredLane = inferLaneFromIntent(intent);
   const activeLane = (lane === "all" ? inferredLane ?? selectedTemplate?.lane ?? "control" : lane) as LaneId;
+  const recommendedHire = agentOpsStrategy?.recommendedHires.find((h) => h.lane === activeLane) ?? agentOpsStrategy?.recommendedHires[0] ?? null;
+  const laneHealth = agentOpsStrategy?.laneHealth.find((h) => h.lane === activeLane) ?? null;
   const effectiveBusy = busy || actionBusy;
   const runnable = useMemo(() => missions.filter((m) => m.runnable), [missions]);
   const matches = useMemo(() => {
@@ -90,6 +94,7 @@ export function GoalComposer({
         requiresApproval: planPreview ? planPreview.approvals.some((a) => a.required) : executionLane === "engineering" || executionLane === "legal",
         expectedOutput: planPreview?.expectedArtifacts.join(" · ") || `${LANE_ZONES[executionLane].label} 업무 결과 초안`,
         enqueue: true,
+        execute: Boolean(planPreview),
       });
       setIntent("");
       setPlanPreview(null);
@@ -188,6 +193,28 @@ export function GoalComposer({
             <span style={{ fontSize: 11, color: "var(--bx-accent)", fontWeight: 900, letterSpacing: "0.08em" }}>CREATE AGENT</span>
             <span style={{ fontSize: 10.5, color: "var(--bx-muted)" }}>템플릿 · 프롬프트 미리보기 · 안전한 무권한 합류 · 현재 {agents.length}명</span>
           </div>
+          {recommendedHire && (
+            <div style={{ marginBottom: 9, padding: 9, borderRadius: 11, background: "rgba(91,140,255,0.08)", border: "1px solid rgba(91,140,255,0.2)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 10, color: "var(--bx-accent)", fontWeight: 900, letterSpacing: "0.1em" }}>RECOMMENDED PLACEMENT</div>
+                  <div style={{ fontSize: 12.2, color: "var(--bx-text)", fontWeight: 850, marginTop: 3 }}>{recommendedHire.laneLabel} · {recommendedHire.role}</div>
+                </div>
+                <button
+                  onClick={() => { setNewName(recommendedHire.name); setNewRole(recommendedHire.role); setLane(recommendedHire.lane); setSelectedTemplateId(""); }}
+                  style={{ ...ghostBtn, color: "var(--bx-accent-2)" }}
+                >
+                  추천 적용
+                </button>
+              </div>
+              <div style={{ marginTop: 6, fontSize: 10.5, color: "var(--bx-muted)", lineHeight: 1.45 }}>
+                {recommendedHire.reason}<br />
+                첫 미션: <b style={{ color: "var(--bx-text)" }}>{recommendedHire.firstMission}</b><br />
+                거버넌스: {recommendedHire.governanceNote}
+              </div>
+              {laneHealth && <div style={{ marginTop: 6, fontSize: 10, color: "var(--bx-muted)" }}>현재 배치: {laneHealth.capacityLabel} · {laneHealth.skillGap}</div>}
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: 8 }}>
             <select value={selectedTemplateId} onChange={(e) => { const t = roleTemplates.find((x) => x.id === e.target.value); setSelectedTemplateId(e.target.value); if (t) { setNewRole(t.role); setLane(t.lane); } }} style={inputMini}>
               <option value="">커스텀</option>
@@ -195,7 +222,7 @@ export function GoalComposer({
             </select>
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름" style={inputMini} />
             <input value={newRole} onChange={(e) => setNewRole(e.target.value)} placeholder="역할" style={inputMini} />
-            <button onClick={async () => { await onCreateAgent({ name: newName, role: newRole, lane: activeLane, templateId: selectedTemplateId || undefined, capabilities: selectedTemplate?.capabilities, kpi: selectedTemplate?.kpi }); setHireOpen(false); }} disabled={busy || !newName.trim() || !newRole.trim()} style={miniBtn}>합류</button>
+            <button onClick={async () => { await onCreateAgent({ name: newName, role: newRole, lane: activeLane, templateId: selectedTemplateId || undefined, capabilities: selectedTemplate?.capabilities ?? recommendedHire?.capabilities, kpi: selectedTemplate?.kpi ?? recommendedHire?.firstMission }); setHireOpen(false); }} disabled={busy || !newName.trim() || !newRole.trim()} style={miniBtn}>합류</button>
           </div>
           {(selectedTemplate || newRole) && (
             <div style={{ marginTop: 9, fontSize: 10.8, color: "var(--bx-muted)", lineHeight: 1.45 }}>

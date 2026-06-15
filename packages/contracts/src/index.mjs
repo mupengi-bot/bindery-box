@@ -12,6 +12,7 @@ export const CommandType = Object.freeze({
   approvalDecide: "approval.decide",
   userMessageIngest: "user.message.ingest",
   agentRunEnqueue: "agent.run.enqueue",
+  agentRunCancel: "agent.run.cancel",
   officeMessagePost: "office.message.post"
 });
 
@@ -27,6 +28,7 @@ export const EventType = Object.freeze({
   agentStreamDelta: "agent.stream.delta",
   agentRunCompleted: "agent.run.completed",
   agentRunFailed: "agent.run.failed",
+  agentRunCancelled: "agent.run.cancelled",
   toolCallRequested: "tool.call.requested",
   toolCallBlocked: "tool.call.blocked",
   toolCallPendingApproval: "tool.call.pending-approval",
@@ -51,6 +53,7 @@ const COMMAND_SCHEMAS = {
   [CommandType.approvalDecide]: ["approvalId", "decision", "decidedBy"],
   [CommandType.userMessageIngest]: ["workspaceId", "provider", "channelRef", "senderRef", "text", "providerEventId"],
   [CommandType.agentRunEnqueue]: ["workspaceId", "taskId", "agentId", "requestedBy", "goal"],
+  [CommandType.agentRunCancel]: ["runId", "requestedBy", "reason"],
   [CommandType.officeMessagePost]: ["workspaceId", "channelRef", "text", "correlationId"]
 };
 

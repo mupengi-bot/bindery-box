@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { OfficeData } from "../useOfficeData";
 import type { LaneId, Mission, Workstream } from "../types";
 import { AgentPanel } from "./AgentPanel";
+import { projectOfficeSignals } from "../scene/projection";
 import { FirstRunOverlay } from "./FirstRunOverlay";
 import { GoalComposer } from "./GoalComposer";
 import { LiveProcess } from "./LiveProcess";
@@ -11,8 +12,32 @@ import { PerformanceBoard } from "./PerformanceBoard";
 import { Sheets, SHEET_TABS, type SheetId } from "./Sheets";
 import { Ticker } from "./Ticker";
 
-const HUD_Z = { root: 20, top: 30, side: 34, dock: 36, composer: 40, toast: 50, sheet: 70, firstRun: 90 };
+const HUD_Z = { root: 20, top: 30, side: 44, dock: 36, composer: 40, toast: 50, sheet: 70, firstRun: 90 };
 const FIRST_RUN_KEY = "bindery-box:first-run-dismissed";
+
+function safeLocalStorageGet(key: string): string | null {
+  try {
+    return globalThis.localStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function safeLocalStorageSet(key: string, value: string) {
+  try {
+    globalThis.localStorage?.setItem(key, value);
+  } catch {
+    // Storage can be blocked in packaged or privacy-restricted contexts.
+  }
+}
+
+function safeLocalStorageRemove(key: string) {
+  try {
+    globalThis.localStorage?.removeItem(key);
+  } catch {
+    // Storage can be blocked in packaged or privacy-restricted contexts.
+  }
+}
 
 export function Hud({
   data,
@@ -33,16 +58,16 @@ export function Hud({
   const ws = data.workstream;
 
   useEffect(() => {
-    setFirstRunOpen(globalThis.localStorage?.getItem(FIRST_RUN_KEY) !== "1");
+    setFirstRunOpen(safeLocalStorageGet(FIRST_RUN_KEY) !== "1");
   }, []);
 
   const dismissFirstRun = useCallback(() => {
-    globalThis.localStorage?.setItem(FIRST_RUN_KEY, "1");
+    safeLocalStorageSet(FIRST_RUN_KEY, "1");
     setFirstRunOpen(false);
   }, []);
 
   const resetGuide = useCallback(() => {
-    globalThis.localStorage?.removeItem(FIRST_RUN_KEY);
+    safeLocalStorageRemove(FIRST_RUN_KEY);
     setFirstRunOpen(true);
   }, []);
 
@@ -68,8 +93,14 @@ export function Hud({
   const reseed = useCallback(() => withBusy(() => data.reseed())(), [data, withBusy]);
 
   const selectedAgent = ws?.agents.find((a) => a.id === selectedId);
+  const officeSignals = useMemo(
+    () => projectOfficeSignals({ agents: ws?.agents ?? [], threads: data.threads, runs: data.orchestratorRuns, artifacts: data.artifacts }),
+    [data.artifacts, data.orchestratorRuns, data.threads, ws?.agents],
+  );
+  const selectedCognition = selectedId ? officeSignals.byAgent.get(selectedId)?.cognition : undefined;
   const selectedPerf = ws?.agentPerformance.find((p) => p.id === selectedId);
   const pendingApprovals = (ws?.alerts ?? []).filter((a) => a.kind === "approval").length;
+  const activeRuns = data.orchestratorRuns.filter((r) => ["running", "planned", "waiting_approval"].includes(String(r.status))).length;
 
   return (
     <div
@@ -98,6 +129,7 @@ export function Hud({
         {selectedAgent ? (
           <AgentPanel
             agent={selectedAgent}
+            cognition={selectedCognition}
             perf={selectedPerf}
             missions={ws?.missions ?? []}
             onRun={runMission}
@@ -142,13 +174,18 @@ export function Hud({
                 {pendingApprovals}
               </span>
             )}
+            {t.id === "orchestration" && activeRuns > 0 && (
+              <span style={{ background: "#21d4a8", color: "#06121f", borderRadius: 999, fontSize: 10, fontWeight: 900, padding: "1px 6px" }}>
+                {activeRuns}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       {/* bottom-center: goal composer */}
       <div style={{ gridArea: "composer", alignSelf: "end", justifySelf: "center", width: "100%", zIndex: HUD_Z.composer }}>
-        <GoalComposer missions={ws?.missions ?? []} agents={ws?.agents ?? []} roleTemplates={data.roleTemplates} initialLane={composerLane} openNonce={composerOpenNonce} onRun={runMission} onCreateTask={data.createTask} onPreviewPlan={data.previewPlan} onCreateAgent={data.createAgent} onReseed={reseed} busy={busy} />
+        <GoalComposer missions={ws?.missions ?? []} agents={ws?.agents ?? []} roleTemplates={data.roleTemplates} agentOpsStrategy={ws?.agentOpsStrategy ?? null} initialLane={composerLane} openNonce={composerOpenNonce} onRun={runMission} onCreateTask={data.createTask} onPreviewPlan={data.previewPlan} onCreateAgent={data.createAgent} onReseed={reseed} busy={busy} />
       </div>
 
       {/* error toast */}
@@ -166,6 +203,10 @@ export function Hud({
           workstream={ws}
           connectors={data.connectors}
           goldenImage={data.goldenImage}
+          threads={data.threads}
+          orchestratorRuns={data.orchestratorRuns}
+          orchestrationAdapters={data.orchestrationAdapters}
+          artifacts={data.artifacts}
           onRun={runMission}
           onDecide={decide}
           searchKnowledge={data.searchKnowledge}
@@ -289,7 +330,7 @@ function pickNextAction(workstream: Workstream | null): NextAction {
   return {
     eyebrow: "COMMAND HINT",
     title: "직원을 선택하고 좌표를 찍어 지휘하세요",
-    detail: "좌클릭/우클릭 이동, 스크롤 줌, 구역별 ＋ 업무 요청을 사용할 수 있습니다.",
+    detail: "직원 좌클릭 선택, 바닥 우클릭 이동, 바닥 좌클릭 해제, 좌드래그 팬, 스크롤 줌, 시점 회전 버튼을 사용할 수 있습니다.",
     mission: null,
     tone: "inspect",
   };
@@ -319,7 +360,7 @@ function NextActionCard({ action, onRun, onOpenMissions, busy }: { action: NextA
       </div>
 
       <div style={{ marginTop: 13, padding: 10, borderRadius: 12, background: "rgba(8,12,24,0.62)", border: "1px solid rgba(120,150,220,0.12)", color: "var(--bx-muted)", fontSize: 11.2, lineHeight: 1.45 }}>
-        <b style={{ color: "var(--bx-text)" }}>조작:</b> 직원 클릭 → 바닥 좌클릭/우클릭 이동 · 휠 줌 · 업무는 구역 스테이션에서 생성
+        <b style={{ color: "var(--bx-text)" }}>조작:</b> 직원 좌클릭 선택 → 바닥 우클릭 이동 · 바닥 좌클릭 해제 · 좌드래그 팬 · 휠 줌 · 시점 회전 버튼
       </div>
     </div>
   );

@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Connector, GoldenImage, KnowledgeResult, LiveLog, PlanPreview, RoleTemplate, Workstream } from "./types";
+import type { Artifact, Connector, GoldenImage, KnowledgeResult, LiveLog, OfficeThread, OrchestrationBoundary, OrchestratorRun, PlanPreview, RoleTemplate, Workstream } from "./types";
 
 const WS = "default";
 const POLL_MS = 6000;
 export type CreateAgentInput = { name: string; role: string; lane: string; templateId?: string; persona?: string; prompt?: string; capabilities?: string[]; kpi?: string };
-export type CreateTaskInput = { title: string; lane: string; priority?: string; requiresApproval?: boolean; expectedOutput?: string; enqueue?: boolean };
+export type CreateTaskInput = { title: string; lane: string; priority?: string; requiresApproval?: boolean; expectedOutput?: string; enqueue?: boolean; execute?: boolean };
 export type MoveAgentInput = { agentId: string; x: number; z: number; source?: "floor" | "zone" };
 
 async function getJSON<T>(url: string): Promise<T> {
@@ -21,6 +21,14 @@ export interface OfficeData {
   connectors: Connector[];
   goldenImage: GoldenImage | null;
   roleTemplates: RoleTemplate[];
+  /** Mattermost office threads ingested into work items. */
+  threads: OfficeThread[];
+  /** Orchestration (runtime adapter) runs. */
+  orchestratorRuns: OrchestratorRun[];
+  /** Orchestration boundary adapters (mock credential state). */
+  orchestrationAdapters: OrchestrationBoundary["adapters"];
+  /** Office-visible artifacts produced by runs. */
+  artifacts: Artifact[];
   loading: boolean;
   error: string | null;
   /** Refresh workstream + live-log immediately. */
@@ -49,6 +57,10 @@ export function useOfficeData(): OfficeData {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [goldenImage, setGoldenImage] = useState<GoldenImage | null>(null);
   const [roleTemplates, setRoleTemplates] = useState<RoleTemplate[]>([]);
+  const [threads, setThreads] = useState<OfficeThread[]>([]);
+  const [orchestratorRuns, setOrchestratorRuns] = useState<OrchestratorRun[]>([]);
+  const [orchestrationAdapters, setOrchestrationAdapters] = useState<OrchestrationBoundary["adapters"]>([]);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -60,10 +72,20 @@ export function useOfficeData(): OfficeData {
         getJSON<LiveLog>(`/api/workspaces/${WS}/live-log`),
         getJSON<GoldenImage>(`/api/workspaces/${WS}/golden-image`),
       ]);
+      const [threadsRes, boundary, runtimeRuns, artifactsRes] = await Promise.allSettled([
+        getJSON<{ threads: OfficeThread[] }>(`/api/workspaces/${WS}/office/threads`),
+        getJSON<OrchestrationBoundary>(`/api/workspaces/${WS}/orchestration-boundary`),
+        getJSON<{ runs: OrchestratorRun[] }>(`/api/workspaces/${WS}/runtime/runs`),
+        getJSON<{ artifacts: Artifact[] }>(`/api/workspaces/${WS}/artifacts`),
+      ]);
       if (!mounted.current) return;
       setWorkstream(ws);
       setLiveLog(log);
       setGoldenImage(golden);
+      setThreads(threadsRes.status === "fulfilled" ? (threadsRes.value.threads ?? []) : []);
+      setOrchestratorRuns(runtimeRuns.status === "fulfilled" ? (runtimeRuns.value.runs ?? []) : boundary.status === "fulfilled" ? (boundary.value.runs ?? []) : []);
+      setOrchestrationAdapters(boundary.status === "fulfilled" ? (boundary.value.adapters ?? []) : []);
+      setArtifacts(artifactsRes.status === "fulfilled" ? (artifactsRes.value.artifacts ?? []) : []);
       setError(null);
     } catch (e) {
       if (mounted.current) setError(e instanceof Error ? e.message : String(e));
@@ -182,6 +204,10 @@ export function useOfficeData(): OfficeData {
     connectors,
     goldenImage,
     roleTemplates,
+    threads,
+    orchestratorRuns,
+    orchestrationAdapters,
+    artifacts,
     loading,
     error,
     refresh,

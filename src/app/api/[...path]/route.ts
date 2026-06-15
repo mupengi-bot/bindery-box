@@ -31,15 +31,29 @@ async function bridge(request: Request): Promise<Response> {
       body = {};
     }
   }
-  const out = await handleRequest({
-    method: request.method,
-    pathname: url.pathname,
-    searchParams: url.searchParams,
-    body,
-  });
+  let out;
+  try {
+    out = await handleRequest({
+      method: request.method,
+      pathname: url.pathname,
+      searchParams: url.searchParams,
+      headers: request.headers,
+      body,
+    });
+  } catch (error) {
+    out = {
+      status: 500,
+      body: {
+        ok: false,
+        error: error instanceof Error ? error.message : "internal_control_plane_error",
+      },
+    };
+  }
+  const responseHeaders = new Headers(JSON_HEADERS);
+  for (const [key, value] of Object.entries(out.headers ?? {})) responseHeaders.set(key, String(value));
   return new Response(JSON.stringify(out.body, null, 2), {
     status: out.status,
-    headers: JSON_HEADERS,
+    headers: responseHeaders,
   });
 }
 

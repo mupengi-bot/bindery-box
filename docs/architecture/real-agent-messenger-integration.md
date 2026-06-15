@@ -68,7 +68,7 @@ AgentInstance
 - definitionId
 - displayName
 - role
-- lane: production | sales | scope3 | control | custom
+- lane: engineering | legal | operations | control | custom
 - status: idle | running | blocked | disabled
 - officeIdentityRef
 - messengerIdentityRef?
@@ -101,10 +101,10 @@ Recommended default channels:
 | `#general` | announcements and daily summary | central plaza |
 | `#tasks` | task creation/results | mission board |
 | `#approvals` | human-gated decisions | Human Gate meeting room |
-| `#production` | production lane work | Production room |
-| `#sales` | sales lane work | Sales room |
-| `#scope3` | ESG/supply-chain lane work | Scope 3 room |
-| `#ops-control` | incidents, connector/runtime alerts | Control room |
+| `#engineering` | code, systems, repository work | Engineering room |
+| `#legal` | contracts, policy, compliance review | Legal room |
+| `#operations` | customer support, incidents, runbooks | Operations room |
+| `#ops-control` | connector/runtime alerts | Control room |
 
 ### Message ingestion
 

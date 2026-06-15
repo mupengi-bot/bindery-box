@@ -41,7 +41,30 @@ async function main() {
   const templates = await handleRequest({ method: "GET", pathname: "/api/role-templates" });
   check("GET role-templates → presets", templates.status === 200 && Array.isArray(templates.body.templates) && templates.body.templates.length >= 4);
 
-  // 8) plan preview flow — preview must not create a task yet
+  const setupStatus = await handleRequest({ method: "GET", pathname: "/api/setup/status" });
+  check("GET setup/status → ready first work item", setupStatus.status === 200 && setupStatus.body.ready === true && setupStatus.body.firstWorkItem?.id === "task_first_work_order");
+  const setupBootstrap = await handleRequest({ method: "POST", pathname: "/api/setup/bootstrap" });
+  check("POST setup/bootstrap → ready workspace", setupBootstrap.status === 200 && setupBootstrap.body.ready === true && setupBootstrap.body.links?.missionControl);
+
+  // 8) auth/session + multi-user hardware/access topology
+  const unauth = await handleRequest({ method: "GET", pathname: "/api/auth/me" });
+  check("GET auth/me without session → 401", unauth.status === 401);
+  const login = await handleRequest({
+    method: "POST",
+    pathname: "/api/auth/login",
+    body: { email: "owner@bindery.local", password: "bindery-local-admin" },
+  });
+  check("POST auth/login → session", login.status === 200 && login.body.ok === true && login.body.user?.role === "owner" && login.headers?.["set-cookie"], login.body.user?.id);
+  const cookie = login.headers?.["set-cookie"] ?? "";
+  const me = await handleRequest({ method: "GET", pathname: "/api/auth/me", headers: { cookie } });
+  check("GET auth/me with session → owner", me.status === 200 && me.body.user?.role === "owner");
+
+  const access = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/access-topology" });
+  check("GET access-topology → users + appliance routes", access.status === 200 && access.body.users?.length >= 2 && access.body.hardwareNodes?.length >= 1 && access.body.summary?.readyRoutes >= 3);
+  const hwRoutes = await handleRequest({ method: "GET", pathname: "/api/hardware/routes" });
+  check("GET hardware/routes → public-safe route metadata", hwRoutes.status === 200 && hwRoutes.body.routes?.some((r) => r.surface === "human-office"));
+
+  // 9) plan preview flow — preview must not create a task yet
   const beforePreviewWs = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/workstream" });
   const preview = await handleRequest({
     method: "POST",
@@ -93,6 +116,36 @@ async function main() {
 
   const threads = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/threads" });
   check("GET threads → ingested thread", threads.status === 200 && threads.body.threads?.some((t) => t.providerEventId === "ci-mm-1"));
+
+  const officeThreads = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/office/threads" });
+  check("GET office/threads → same human office threads", officeThreads.status === 200 && officeThreads.body.threads?.some((t) => t.providerEventId === "ci-mm-1"));
+
+  const officeIngest = await handleRequest({
+    method: "POST",
+    pathname: "/api/office/messages/ingest",
+    body: {
+      workspaceId: "default",
+      provider: "mattermost",
+      channelRef: "#operations",
+      senderRef: "ci-ops-user",
+      providerEventId: "ci-mm-office-1",
+      text: "운영 채널 고객 문의를 요약하고 답변 초안 만들어줘",
+    },
+  });
+  check("POST office/messages/ingest → control-plane command", officeIngest.status === 200 && officeIngest.body.ok === true && officeIngest.body.result?.thread?.providerEventId === "ci-mm-office-1", officeIngest.body.result?.task?.id);
+
+  const runtimeRuns = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/runtime/runs" });
+  check("GET runtime/runs → adapter health + runs", runtimeRuns.status === 200 && runtimeRuns.body.health?.status === "mock-healthy" && Array.isArray(runtimeRuns.body.runs));
+
+  const cancellable = runtimeRuns.body.runs.find((r) => r.status === "planned" || r.status === "running" || r.status === "waiting_approval");
+  if (cancellable) {
+    const cancel = await handleRequest({
+      method: "POST",
+      pathname: `/api/runtime/runs/${cancellable.id}/cancel`,
+      body: { requestedBy: "ci", reason: "validation cleanup" },
+    });
+    check("POST runtime/runs/:id/cancel → agent.run.cancelled", cancel.status === 200 && cancel.body.ok === true && cancel.body.result?.orchestratorRun?.status === "cancelled", cancellable.id);
+  }
 
   const boundary = await handleRequest({ method: "GET", pathname: "/api/workspaces/default/orchestration-boundary" });
   check("GET orchestration-boundary → Paperclip/GitHub/Mattermost adapters", boundary.status === 200 && boundary.body.adapters?.some((a) => a.id === "paperclip") && boundary.body.runs?.length > 0);

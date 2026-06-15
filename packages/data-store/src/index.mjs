@@ -29,6 +29,95 @@ export function createMemoryStore(initialState) {
   };
 }
 
+// --- Postgres (local/appliance Data Plane) ----------------------------------
+//
+// Keeps the canonical state as one JSONB row for the current alpha contract while
+// the real relational schema matures. This gives the local stack durable restart
+// behavior without leaking Postgres details into the runtime plane.
+export function createPostgresStore({ connectionString, table = "bindery_state", rowId = "default", seedFactory } = {}) {
+  if (!connectionString) throw new Error("PostgresStore requires BINDERY_DATABASE_URL");
+
+  let poolPromise = null;
+  async function getPool() {
+    if (poolPromise) return poolPromise;
+    poolPromise = (async () => {
+      let Pool;
+      try {
+        ({ Pool } = await import("pg"));
+      } catch {
+        throw new Error("PostgresStore needs the optional 'pg' dependency. Run npm install before enabling BINDERY_DATABASE_URL.");
+      }
+      return new Pool({ connectionString, max: 4, idleTimeoutMillis: 10_000 });
+    })();
+    return poolPromise;
+  }
+
+  function assertSafeTableName(name) {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) throw new Error(`Unsafe Postgres table name: ${name}`);
+    return name;
+  }
+
+  async function ensureTable() {
+    const safeTable = assertSafeTableName(table);
+    const pool = await getPool();
+    await pool.query(`CREATE TABLE IF NOT EXISTS ${safeTable} (
+      id text PRIMARY KEY,
+      state jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`);
+  }
+
+  async function readRow() {
+    await ensureTable();
+    const safeTable = assertSafeTableName(table);
+    const pool = await getPool();
+    const result = await pool.query(`SELECT state FROM ${safeTable} WHERE id = $1`, [rowId]);
+    return result.rows[0]?.state ?? null;
+  }
+
+  async function writeRow(state) {
+    await ensureTable();
+    const safeTable = assertSafeTableName(table);
+    const pool = await getPool();
+    await pool.query(
+      `INSERT INTO ${safeTable} (id, state) VALUES ($1, $2::jsonb)
+       ON CONFLICT (id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()`,
+      [rowId, JSON.stringify(state)]
+    );
+    return state;
+  }
+
+  return {
+    async load() {
+      const existing = await readRow();
+      if (existing) return existing;
+      const seeded = typeof seedFactory === "function" ? seedFactory() : null;
+      if (seeded) await writeRow(seeded);
+      return seeded;
+    },
+    async save(next) {
+      return writeRow(next);
+    },
+    async appendEvents(events) {
+      const state = (await readRow()) ?? (typeof seedFactory === "function" ? seedFactory() : {});
+      state.events = state.events ?? [];
+      state.events.push(...events);
+      await writeRow(state);
+      return state.events;
+    },
+    async getEvents() {
+      const state = await readRow();
+      return state?.events ?? [];
+    },
+    async close() {
+      if (!poolPromise) return;
+      const pool = await poolPromise;
+      await pool.end();
+    }
+  };
+}
+
 // --- Supabase (hosted Data Plane) -----------------------------------------
 //
 // Placeholder/interface for a hosted Postgres-backed store. It keeps the
@@ -111,6 +200,14 @@ export function createSupabaseStore({ url, serviceRoleKey, table = "bindery_stat
 // platforms (Vercel) have no writable filesystem, so demo state lives only for
 // the lifetime of a warm function instance and reseeds on cold start.
 export function createCloudStore({ seedFactory, env = process.env } = {}) {
+  if (env?.BINDERY_DATABASE_URL) {
+    return createPostgresStore({
+      connectionString: env.BINDERY_DATABASE_URL,
+      table: env.BINDERY_STATE_TABLE,
+      rowId: env.BINDERY_WORKSPACE_ID ?? "default",
+      seedFactory
+    });
+  }
   if (env?.SUPABASE_URL && env?.SUPABASE_SERVICE_ROLE_KEY) {
     return createSupabaseStore({
       url: env.SUPABASE_URL,
@@ -124,6 +221,7 @@ export function createCloudStore({ seedFactory, env = process.env } = {}) {
 
 // Reports which Data Plane backend a given env resolves to (for /health).
 export function describeStoreBackend(env = process.env) {
+  if (env?.BINDERY_DATABASE_URL) return { backend: "postgres", persistent: true, mode: "local-appliance" };
   return env?.SUPABASE_URL && env?.SUPABASE_SERVICE_ROLE_KEY
     ? { backend: "supabase", persistent: true, mode: "hosted" }
     : { backend: "memory", persistent: false, mode: "stateless-demo" };

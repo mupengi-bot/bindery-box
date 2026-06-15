@@ -70,6 +70,81 @@ export const PLAZA: [number, number] = [0, 0];
 
 export const FLOOR = { width: 42, depth: 34 };
 
+export type OfficeVisualThemeId = "comfort" | "night";
+
+export interface OfficeVisualTheme {
+  id: OfficeVisualThemeId;
+  canvas: string;
+  fog: string;
+  floor: string;
+  floorGrid: string;
+  plaza: string;
+  sign: string;
+  signEmissive: string;
+  wall: string;
+  glass: string;
+  desk: string;
+  deskTop: string;
+  paper: string;
+  plantPot: string;
+  shelf: string;
+  shadow: string;
+  labelBg: string;
+  labelText: string;
+  labelMuted: string;
+  laneOpacity: number;
+  gridOpacity: number;
+}
+
+export const OFFICE_VISUAL_THEMES: Record<OfficeVisualThemeId, OfficeVisualTheme> = {
+  comfort: {
+    id: "comfort",
+    canvas: "#f5f2ea",
+    fog: "#f5f2ea",
+    floor: "#e8e1d4",
+    floorGrid: "#8a7b66",
+    plaza: "#f4efe5",
+    sign: "#fffaf0",
+    signEmissive: "#f4b860",
+    wall: "#f8f6f0",
+    glass: "#d8e5f2",
+    desk: "#c8a97e",
+    deskTop: "#e9d6b8",
+    paper: "#fffaf0",
+    plantPot: "#f4efe5",
+    shelf: "#d9c7aa",
+    shadow: "#b4a58e",
+    labelBg: "rgba(255,252,245,0.9)",
+    labelText: "#1f2933",
+    labelMuted: "#667085",
+    laneOpacity: 0.2,
+    gridOpacity: 0.12,
+  },
+  night: {
+    id: "night",
+    canvas: "#070b16",
+    fog: "#070b16",
+    floor: "#0d1425",
+    floorGrid: "#26304e",
+    plaza: "#161d33",
+    sign: "#0c1226",
+    signEmissive: "#1b2750",
+    wall: "#2a3252",
+    glass: "#a8c7ff",
+    desk: "#26314f",
+    deskTop: "#26314f",
+    paper: "#eaf0ff",
+    plantPot: "#f4efe5",
+    shelf: "#19223b",
+    shadow: "#020611",
+    labelBg: "rgba(9,14,29,0.86)",
+    labelText: "#eaf0ff",
+    labelMuted: "#9fb0d8",
+    laneOpacity: 0.32,
+    gridOpacity: 0.28,
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Office rooms & navigation graph
 // ---------------------------------------------------------------------------

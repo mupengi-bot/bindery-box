@@ -8,8 +8,7 @@ The current runnable Alpha slice is intentionally a prototype:
 
 - `apps/web` renders a Mission Control-style dashboard.
 - `apps/api` exposes a local HTTP API.
-- `packages/runtime` simulates task execution, approvals, and audit events.
-- `examples/manufacturing-demo` provides demo manufacturing data.
+- `packages/runtime` simulates task execution, approvals, runtime events, and audit events.
 - `apps/desktop` previews launcher responsibilities.
 
 This Alpha proves the product shape, but it is **not** the final platform architecture. Do not add large product features on top of the prototype flow until the platform boundaries below are implemented.
@@ -29,7 +28,7 @@ The system must support:
 7. Human approvals before sensitive actions
 8. Full append-only audit trail
 9. Local, appliance, and hosted deployment modes
-10. Manufacturing Edition as the first vertical preset, not a hardcoded product limit
+10. Generic core lanes first; industry presets remain templates, not product limits
 
 ## Planes
 
@@ -186,7 +185,7 @@ bindery-box/
 │  ├─ observability/
 │  └─ ui/
 ├─ editions/
-│  ├─ manufacturing/
+│  ├─ presets/
 │  └─ general-office/
 ├─ examples/
 ├─ infra/
@@ -199,7 +198,7 @@ Migration direction:
 - `apps/api` -> `apps/control-api`
 - `packages/core` -> `packages/domain`
 - `packages/runtime` remains but loses demo-specific hardcoding
-- `examples/manufacturing-demo` becomes data for `editions/manufacturing`
+- industry demos become optional preset data, never core behavior
 
 ## Platform Invariant
 

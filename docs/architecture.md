@@ -1,49 +1,42 @@
 # BINDERY BOX Architecture
 
-BINDERY BOX is an AI Company-in-a-Box platform. The visual office is Mattermost, the operator surface is Mission Control Web, and the runtime executes agent tasks with approval, policy, connector, and audit boundaries.
+BINDERY BOX is an AI Company-in-a-Box platform. The main surface is a Claw3D-style office; people collaborate through the Human Office messenger bridge; operators govern through Mission Control; agents execute through the Runtime Plane.
 
-## Current Alpha Is a Prototype
+## Current alpha boundary
 
-The current runnable Alpha slice proves the product shape, but it is not the final platform architecture:
+The runnable alpha exists to validate the product loop, but all real work must keep the platform invariant:
 
-- `apps/web` is a prototype Mission Control surface.
-- `apps/api` is a prototype local API.
-- `packages/runtime` currently simulates task execution and approvals.
-- `examples/manufacturing-demo` is demo data for the first vertical.
+```txt
+Command -> Policy Check -> Runtime Action -> Event(s) -> Persist -> Projection
+```
 
-Before large feature work, the platform must be split into explicit domain, contract, policy, data-store, office, connector, and runtime boundaries.
+No UI, connector, messenger adapter, runtime worker, or hardware node may mutate canonical business state directly.
 
-## Platform Architecture Docs
+## Platform architecture docs
 
 - [Platform-first architecture](architecture/platform-first-architecture.md)
 - [Domain model](architecture/domain-model.md)
 - [Runtime commands and events](architecture/runtime-events.md)
+- [Real agent + messenger integration](architecture/real-agent-messenger-integration.md)
+- [Multi-user hardware path](architecture/multi-user-hardware-path.md)
 
-## Target Planes
+## Planes
 
-1. **Mission Control Web** — org chart, tasks, approvals, audit, KPI, configuration.
-2. **Control Plane API** — tenants, workspaces, agents, policies, connectors, deployments.
-3. **Runtime Plane** — orchestration, workers, task runs, tool calls, scheduler.
-4. **Office Plane** — Mattermost teams, channels, agent identities, approval threads.
-5. **Connector Hub** — files, CSV, email, GitHub, ERP/MES, webhooks, MCP-compatible tools.
-6. **Data Plane** — SQLite/Postgres, object files, audit log, knowledge graph.
-7. **Desktop / Appliance Plane** — install, start/stop, updates, secrets, local permissions.
+1. **Control Plane** — tenants, workspaces, users, commands, policies, projections.
+2. **3D Office Plane** — visible agents, desks, runs, approvals, artifacts.
+3. **Human Office Plane** — messenger channels, threads, mentions, files.
+4. **Runtime Plane** — run queue, streaming events, cancellation, retries.
+5. **Connector Plane** — external system manifests and scoped grants.
+6. **Data Plane** — event store, projections, audit, knowledge/artifact refs.
+7. **Policy Plane** — approvals, capability checks, human gates.
+8. **Hardware/Appliance Plane** — LAN route host, local runtime, update/start/stop lifecycle.
 
-## Runtime Invariant
+## Default lanes
+
+Core lanes are generic and should remain product-wide:
 
 ```txt
-Command -> Policy Check -> Runtime Action -> Event(s) -> Persist -> Project to UI / Office
+engineering | legal | operations | control
 ```
 
-No direct UI mutation of business state. No connector side effect without capability grants. No sensitive external action without approval policy evaluation.
-
-## First Vertical
-
-Manufacturing Edition remains the first product preset:
-
-- Production Leader
-- Sales Leader
-- Scope 3 Leader
-- Ops Controller
-
-This vertical should migrate into `editions/manufacturing` as a preset, not stay hardcoded into app/runtime logic.
+Industry presets can be added later as templates, not as hardcoded core behavior.
